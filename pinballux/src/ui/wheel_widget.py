@@ -780,7 +780,7 @@ class WheelWidget(QWidget):
         if hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
             # Add offset to move selector at 270°
             wheel_transform = QTransform()
-            wheel_transform.translate(600, 0)  # Shift right by 600 pixels
+            wheel_transform.translate(0, 600)  # Shift down by 600 pixels
             self.wheel_proxy.setTransform(wheel_transform)
         elif hasattr(self, 'wheel_proxy'):
             # Reset wheel_proxy transform for other rotations
