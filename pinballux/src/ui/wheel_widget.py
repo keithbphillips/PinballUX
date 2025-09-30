@@ -834,13 +834,12 @@ class WheelWidget(QWidget):
             transform.translate(-center_x, -center_y)
         elif normalized_angle == 270:
             # For 270° rotation: content rotates counter-clockwise, needs repositioning to right edge
-            # After 270° rotation, the original height becomes the new width
-            # Position so the rotated content sits at the right edge
+            # After 270° rotation, original (width, height) becomes (height, width) in screen space
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # After rotation, translate to account for swapped dimensions and move to right
-            # The rotated height (original width) needs to be at the right edge
-            transform.translate(-center_y + (width - height), -center_x)
+            # After rotation, the content needs to be shifted right
+            # Since rotated height = original width, we need to shift by (width - height) + height = width
+            transform.translate(-center_y + width, -center_x)
 
         return transform
 
@@ -877,8 +876,8 @@ class WheelWidget(QWidget):
             # For 270° rotation: position video at right edge like the selector
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # After rotation, translate to account for swapped dimensions and move to right
-            transform.translate(-center_y + (width - height), -center_x)
+            # After rotation, shift right by the full screen width
+            transform.translate(-center_y + width, -center_x)
 
         return transform
 
