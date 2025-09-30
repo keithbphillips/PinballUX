@@ -27,7 +27,7 @@ cd PinballUX
 ```
 
 2. Install Visual Pinball Standalone for Linux:
-   - Download Visual Pinball Standalone for Linux from the official source
+   - Download Visual Pinball Standalone for Linux from [GitHub Releases](https://github.com/vpinball/vpinball/releases)
    - Extract the VPinball directory into the PinballUX root directory as `vpinball/`
    - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
    - Place ROM files in `PinballUX/roms/` directory
