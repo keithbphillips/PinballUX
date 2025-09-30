@@ -780,11 +780,21 @@ class WheelWidget(QWidget):
         if hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
             # Add offset to move selector at 270°
             wheel_transform = QTransform()
-            wheel_transform.translate(0, 600)  # Shift down by 600 pixels
+            wheel_transform.translate(0, 1100)  # Shift down by 1100 pixels
             self.wheel_proxy.setTransform(wheel_transform)
         elif hasattr(self, 'wheel_proxy'):
             # Reset wheel_proxy transform for other rotations
             self.wheel_proxy.setTransform(QTransform())
+
+        # Apply additional transform to info_proxy for 270° rotation
+        if hasattr(self, 'info_proxy') and self.rotation_angle == 270:
+            # Add offset to move table info display at 270°
+            info_transform = QTransform()
+            info_transform.translate(0, 0)  # Adjust as needed
+            self.info_proxy.setTransform(info_transform)
+        elif hasattr(self, 'info_proxy'):
+            # Reset info_proxy transform for other rotations
+            self.info_proxy.setTransform(QTransform())
 
         # Apply rotation to background video item (90° counter-clockwise from UI rotation)
         self._apply_video_rotation()
