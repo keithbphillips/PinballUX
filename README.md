@@ -32,17 +32,23 @@ cd PinballUX
    - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
    - Place ROM files in `PinballUX/roms/` directory
 
-3. Install Python dependencies:
+3. Set up Python virtual environment:
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+4. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-4. Install the package:
+5. Install the package:
 ```bash
 pip install -e .
 ```
 
-5. Add your VPX table files to `pinballux/data/tables/`
+6. Add your VPX table files to `pinballux/data/tables/`
 
 ## Usage
 
