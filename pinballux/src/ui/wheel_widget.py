@@ -836,9 +836,10 @@ class WheelWidget(QWidget):
             # For 270° rotation: content rotates counter-clockwise, needs repositioning
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # Adjust positioning to move selector to right edge of screen
-            offset_x = (width - height)  # Move selector to right edge (full offset)
-            transform.translate(-center_y + offset_x, -center_x)
+            # After rotation, position to right edge
+            transform.translate(-center_y, -center_x)
+            # Move to right edge by translating along the rotated x-axis
+            transform.translate(width, 0)
 
         return transform
 
@@ -875,10 +876,10 @@ class WheelWidget(QWidget):
             # For 270° rotation: right side is down, needs positioning adjustment
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # Adjust positioning to move video to right edge and down properly
-            offset_x = (width - height)  # Move video to right edge (full offset)
-            offset_y = width * 0.9  # Move video down by 90% of video width for proper positioning
-            transform.translate(-center_y - offset_x, -center_x + offset_y)
+            # After rotation, center the video and move to right edge
+            transform.translate(-center_y, -center_x)
+            # Move to right edge by translating along the rotated x-axis
+            transform.translate(width, 0)
 
         return transform
 
