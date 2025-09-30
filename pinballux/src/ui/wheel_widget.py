@@ -776,6 +776,16 @@ class WheelWidget(QWidget):
         self.background_view.setTransform(transform)
         logger.debug(f"Applied UI rotation transform: {self.rotation_angle}° (transform applied to background_view)")
 
+        # Apply additional transform to wheel_proxy for 270° rotation
+        if hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
+            # Add offset to move selector at 270°
+            wheel_transform = QTransform()
+            wheel_transform.translate(600, 0)  # Shift right by 600 pixels
+            self.wheel_proxy.setTransform(wheel_transform)
+        elif hasattr(self, 'wheel_proxy'):
+            # Reset wheel_proxy transform for other rotations
+            self.wheel_proxy.setTransform(QTransform())
+
         # Apply rotation to background video item (90° counter-clockwise from UI rotation)
         self._apply_video_rotation()
 
