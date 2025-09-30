@@ -1,0 +1,71 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+
+# Config (user-specific)
+config.json
+
+# Media files (large files) - ignore all content but keep directory structure
+pinballux/data/media/videos/**/*
+pinballux/data/media/audio/**/*
+pinballux/data/media/images/**/*
+pinballux/data/tables/**/*
+
+# Keep directory structure with .gitkeep files
+!pinballux/data/media/videos/**/.gitkeep
+!pinballux/data/media/audio/**/.gitkeep
+!pinballux/data/media/images/**/.gitkeep
+!pinballux/data/tables/.gitkeep
+
+# VPinball data (ROM files)
+vpinball/
+
+# ROM zip files in root and roms directory
+/*.zip
+roms/
+
+# Test files
+test_*.py
+!tests/
