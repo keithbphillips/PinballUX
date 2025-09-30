@@ -36,6 +36,9 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Screenshots
+Screenshots/
+
 # Database
 *.db
 *.sqlite
