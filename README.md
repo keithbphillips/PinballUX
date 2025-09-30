@@ -62,6 +62,13 @@ Or run directly:
 python pinballux/src/main.py
 ```
 
+### Keyboard Controls
+
+- **← / →** (Left/Right Arrow Keys): Navigate through the table wheel
+- **Enter**: Launch selected table
+- **R**: Rotate display 90° clockwise (useful for portrait/landscape orientation)
+- **Escape**: Exit PinballUX
+
 ## Media Files
 
 PinballUX uses a structured media system where files must match the table name and be placed in the appropriate directory:
