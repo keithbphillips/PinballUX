@@ -172,21 +172,21 @@ class WheelItem(QLabel):
             line1 = ' '.join(words[:len(words)//2])
             line2 = ' '.join(words[len(words)//2:])
 
-            painter.drawText(10, 90, 180, 30, Qt.AlignmentFlag.AlignCenter, line1)
-            painter.drawText(10, 110, 180, 30, Qt.AlignmentFlag.AlignCenter, line2)
+            painter.drawText(10, 90, 180, 30, int(Qt.AlignmentFlag.AlignCenter), line1)
+            painter.drawText(10, 110, 180, 30, int(Qt.AlignmentFlag.AlignCenter), line2)
         else:
-            painter.drawText(10, 85, 180, 30, Qt.AlignmentFlag.AlignCenter, table_name)
+            painter.drawText(10, 85, 180, 30, int(Qt.AlignmentFlag.AlignCenter), table_name)
 
         # Draw manufacturer and year
         manufacturer = self.table_data.get('manufacturer', '')
         year = self.table_data.get('year', '')
-        info_text = f"{manufacturer} ({year})" if manufacturer and year else manufacturer or year or ''
+        info_text = f"{manufacturer} ({year})" if manufacturer and year else str(manufacturer or year or '')
 
         if info_text:
             font = QFont("Arial", 10)
             painter.setFont(font)
             painter.setPen(QColor(200, 200, 200))
-            painter.drawText(10, 130, 180, 20, Qt.AlignmentFlag.AlignCenter, info_text)
+            painter.drawText(10, 130, 180, 20, int(Qt.AlignmentFlag.AlignCenter), info_text)
 
         painter.end()
 
