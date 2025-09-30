@@ -838,7 +838,7 @@ class WheelWidget(QWidget):
             transform.rotate(270)
             transform.translate(-center_y, -center_x)  # Note: swapped for 270°
             # Shift left and slightly up to position at right edge
-            transform.translate(-center_x, center_y - 180)
+            transform.translate(-center_x, center_y - 170)
 
         return transform
 
@@ -877,7 +877,7 @@ class WheelWidget(QWidget):
             transform.rotate(270)
             transform.translate(-center_y, -center_x)  # Note: swapped for 270°
             # Shift left and slightly up to position at right edge
-            transform.translate(-center_x, center_y - 180)
+            transform.translate(-center_x, center_y - 170)
 
         return transform
 
