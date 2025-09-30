@@ -22,19 +22,27 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 
 1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd pinballUX
+git clone https://github.com/keithbphillips/PinballUX.git
+cd PinballUX
 ```
 
-2. Install dependencies:
+2. Install Visual Pinball Standalone for Linux:
+   - Download Visual Pinball Standalone for Linux from the official source
+   - Extract the VPinball directory into the PinballUX root directory as `vpinball/`
+   - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
+   - Place ROM files in `PinballUX/roms/` directory
+
+3. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Install the package:
+4. Install the package:
 ```bash
 pip install -e .
 ```
+
+5. Add your VPX table files to `pinballux/data/tables/`
 
 ## Usage
 
@@ -48,10 +56,59 @@ Or run directly:
 python pinballux/src/main.py
 ```
 
+## Media Files
+
+PinballUX uses a structured media system where files must match the table name and be placed in the appropriate directory:
+
+### Media Directory Structure
+
+```
+pinballux/data/media/
+├── videos/
+│   ├── table/          # Table gameplay videos
+│   ├── backglass/      # Backglass videos
+│   ├── dmd/            # DMD videos
+│   ├── real_dmd/       # Real DMD capture videos
+│   ├── real_dmd_color/ # Color DMD videos
+│   └── topper/         # Topper videos
+├── images/
+│   ├── table/          # Table playfield images
+│   ├── backglass/      # Backglass images
+│   ├── wheel/          # Wheel images for table selection
+│   └── dmd/            # DMD images
+└── audio/
+    ├── launch/         # Table launch audio
+    └── ui/             # UI sound effects
+```
+
+### Media File Naming Convention
+
+Media files must match the table name exactly. For example, for a table named "Attack from Mars (Bally 1995).vpx":
+
+- **Table video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/table/`
+- **Backglass video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/backglass/`
+- **DMD video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/real_dmd_color/`
+- **Wheel image**: `Attack from Mars (Bally 1995).png` → `pinballux/data/media/images/wheel/`
+- **Launch audio**: `Attack from Mars (Bally 1995).mp3` → `pinballux/data/media/audio/launch/`
+
+### Media Playback Priority
+
+PinballUX displays media in the following priority order for each display type:
+
+1. **Video** (if available) - preferred format: MP4, F4V
+2. **Image** (if video not found) - preferred format: PNG, JPG
+3. **Default content** (if no media found) - fallback display
+
+This applies to:
+- **Playfield display**: Table video → Table image → Default background
+- **Backglass display**: Backglass video → Backglass image → Table name display
+- **DMD display**: DMD video → DMD image → Text display
+
 ## Configuration
 
 Configuration files are stored in `~/.config/pinballux/`:
 - `config.json`: Main configuration file
+- `pinballux.db`: Table database
 - `logs/`: Application logs
 
 ## Project Structure
