@@ -51,12 +51,16 @@ config.json
 pinballux/data/media/videos/**/*
 pinballux/data/media/audio/**/*
 pinballux/data/media/images/**/*
-pinballux/data/tables/**/*
+pinballux/data/media/tables/**/*
 
 # Keep directory structure with .gitkeep files
 !pinballux/data/media/videos/**/.gitkeep
 !pinballux/data/media/audio/**/.gitkeep
 !pinballux/data/media/images/**/.gitkeep
+!pinballux/data/media/tables/**/.gitkeep
+
+# Legacy tables directory (if exists)
+pinballux/data/tables/**/*
 !pinballux/data/tables/.gitkeep
 
 # VPinball data (ROM files)
