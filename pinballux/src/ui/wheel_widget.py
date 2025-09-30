@@ -780,7 +780,7 @@ class WheelWidget(QWidget):
         if hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
             # Add offset to move selector at 270°
             wheel_transform = QTransform()
-            wheel_transform.translate(0, 1100)  # Shift down by 1100 pixels
+            wheel_transform.translate(0, 1110)  # Shift down by 1100 pixels
             self.wheel_proxy.setTransform(wheel_transform)
         elif hasattr(self, 'wheel_proxy'):
             # Reset wheel_proxy transform for other rotations
@@ -790,7 +790,7 @@ class WheelWidget(QWidget):
         if hasattr(self, 'info_proxy') and self.rotation_angle == 270:
             # Add offset to move table info display at 270°
             info_transform = QTransform()
-            info_transform.translate(800, 0)  # Shift right by 800 pixels
+            info_transform.translate(0, 1120)  # Shift right by 800 pixels
             self.info_proxy.setTransform(info_transform)
         elif hasattr(self, 'info_proxy'):
             # Reset info_proxy transform for other rotations
