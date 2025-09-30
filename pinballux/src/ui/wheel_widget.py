@@ -644,7 +644,11 @@ class WheelWidget(QWidget):
                 self.default_background.setPixmap(scaled_pixmap)
                 self.default_background.setScaledContents(True)
                 self.default_background_proxy.setVisible(True)
-                self.logger.debug(f"Displaying background image: {Path(image_path).name}")
+
+                # Apply rotation transform to the image proxy for 90° and 270° rotations
+                self._apply_image_rotation()
+
+                self.logger.debug(f"Displaying background image: {Path(image_path).name} (rotation: {self.rotation_angle}°)")
             else:
                 self.default_background.clear()
                 self.default_background.setText("Image Load Failed")
@@ -799,6 +803,9 @@ class WheelWidget(QWidget):
         # Apply rotation to background video item (90° counter-clockwise from UI rotation)
         self._apply_video_rotation()
 
+        # Apply rotation to background image for 90° and 270° rotations
+        self._apply_image_rotation()
+
         # Update layout to ensure proper positioning
         self._update_scene_layout()
 
@@ -829,6 +836,26 @@ class WheelWidget(QWidget):
         self.background_video_item.setTransform(video_transform)
 
         logger.debug(f"Applied video rotation: {video_rotation}° (Selector: {self.rotation_angle}°, Screen: {widget_width}x{widget_height})")
+
+    def _apply_image_rotation(self):
+        """Apply rotation to background image proxy for 90° and 270° rotations only"""
+        if not hasattr(self, 'default_background_proxy') or not self.default_background_proxy:
+            return
+
+        # Only apply special rotation for 90° and 270° view angles (not 0° or 180°)
+        if self.rotation_angle in [90, 270]:
+            widget_width = self.width()
+            widget_height = self.height()
+
+            # Build the same video transform for consistency
+            image_transform = self._build_video_rotation_transform(widget_width, widget_height, self.rotation_angle)
+            self.default_background_proxy.setTransform(image_transform)
+
+            logger.debug(f"Applied image rotation transform: {self.rotation_angle}°")
+        else:
+            # Reset transform for 0° and 180° rotations
+            self.default_background_proxy.setTransform(QTransform())
+            logger.debug(f"Reset image transform for {self.rotation_angle}° rotation")
 
     def _build_rotation_transform(self, width: float, height: float, angle: int) -> QTransform:
         """Return a transform that rotates around the center and properly positions the content."""
