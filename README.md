@@ -89,13 +89,13 @@ pinballux/data/media/
 
 ### Media File Naming Convention
 
-Media files must match the table name exactly. For example, for a table named "Attack from Mars (Bally 1995).vpx":
+Media files must match the table name exactly. For example, for a table named "My Favorite Table.vpx":
 
-- **Table video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/table/`
-- **Backglass video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/backglass/`
-- **DMD video**: `Attack from Mars (Bally 1995).mp4` → `pinballux/data/media/videos/real_dmd_color/`
-- **Wheel image**: `Attack from Mars (Bally 1995).png` → `pinballux/data/media/images/wheel/`
-- **Launch audio**: `Attack from Mars (Bally 1995).mp3` → `pinballux/data/media/audio/launch/`
+- **Table video**: `My Favorite Table.mp4` → `pinballux/data/media/videos/table/`
+- **Backglass video**: `My Favorite Table.mp4` → `pinballux/data/media/videos/backglass/`
+- **DMD video**: `My Favorite Table.mp4` → `pinballux/data/media/videos/real_dmd_color/`
+- **Wheel image**: `My Favorite Table.png` → `pinballux/data/media/images/wheel/`
+- **Launch audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/launch/`
 
 ### Media Playback Priority
 
