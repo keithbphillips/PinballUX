@@ -833,12 +833,12 @@ class WheelWidget(QWidget):
             transform.rotate(180)
             transform.translate(-center_x, -center_y)
         elif normalized_angle == 270:
-            # For 270° rotation: content rotates counter-clockwise, needs repositioning to right edge
+            # For 270° rotation: content rotates counter-clockwise, then shift to right edge
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # After rotation, adjust positioning to move to right edge
-            offset_x = (width - height)  # Horizontal offset to reach right edge
-            transform.translate(-center_y + offset_x, -center_x)
+            transform.translate(-center_y, -center_x)  # Note: swapped for 270°
+            # Shift left and up to position at right edge
+            transform.translate(-center_x, center_y)
 
         return transform
 
@@ -872,12 +872,12 @@ class WheelWidget(QWidget):
             transform.rotate(180)
             transform.translate(-center_x, -center_y)
         elif normalized_angle == 270:
-            # For 270° rotation: position video at right edge using original offset approach
+            # For 270° rotation: same approach as 90°, then shift to right edge
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            # Use the same offset as selector for consistency
-            offset_x = (width - height)  # Horizontal offset to reach right edge
-            transform.translate(-center_y + offset_x, -center_x)
+            transform.translate(-center_y, -center_x)  # Note: swapped for 270°
+            # Shift left and up to position at right edge
+            transform.translate(-center_x, center_y)
 
         return transform
 
