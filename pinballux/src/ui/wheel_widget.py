@@ -2,7 +2,7 @@
 PinballX-style wheel widget for table selection
 """
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGraphicsView, QGraphicsScene
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGraphicsView, QGraphicsScene, QGraphicsOpacityEffect
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRectF, QSizeF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect, pyqtProperty
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QBrush, QLinearGradient, QPen, QPainterPath, QTransform
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -16,6 +16,159 @@ from ..input.input_manager import InputManager, InputAction
 from .media_widgets import AudioPlayer
 
 logger = get_logger(__name__)
+
+
+class LoadingPopup(QWidget):
+    """Appealing popup window showing table loading status"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        # Set as a regular widget that will draw on top
+        self.setAutoFillBackground(False)
+        self.base_width = 600
+        self.base_height = 300
+        self.rotation_angle = 0
+        self.table_name = ""
+        self.spinner_index = 0
+        self.spinner_chars = ["⚡", "✦", "★", "✦"]
+
+        # Spinner timer
+        self.spinner_timer = QTimer()
+        self.spinner_timer.timeout.connect(self._update_spinner)
+
+        # Opacity for fade animations
+        self.opacity = 0.0
+
+        # Initially hide
+        self.hide()
+
+    def _update_spinner(self):
+        """Update spinner animation"""
+        self.spinner_index = (self.spinner_index + 1) % len(self.spinner_chars)
+        self.update()  # Trigger repaint
+
+    def paintEvent(self, event):
+        """Custom paint event to draw the rotated loading popup"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+
+        # Draw semi-transparent full-screen overlay first (for dimming effect)
+        painter.setOpacity(self.opacity * 0.5)  # 50% of current opacity
+        painter.fillRect(self.rect(), QColor(0, 0, 0, 180))
+
+        # Reset opacity for the popup
+        painter.setOpacity(self.opacity)
+
+        # Apply rotation transform
+        if self.rotation_angle != 0:
+            center_x = self.width() / 2.0
+            center_y = self.height() / 2.0
+            painter.translate(center_x, center_y)
+            painter.rotate(self.rotation_angle)
+            painter.translate(-self.base_width / 2.0, -self.base_height / 2.0)
+        else:
+            # No rotation needed
+            painter.translate((self.width() - self.base_width) / 2.0,
+                            (self.height() - self.base_height) / 2.0)
+
+        # Draw the popup container with gradient background
+        rect = QRectF(0, 0, self.base_width, self.base_height)
+
+        # Background gradient
+        bg_gradient = QLinearGradient(0, 0, 0, self.base_height)
+        bg_gradient.setColorAt(0, QColor(30, 30, 40, 240))
+        bg_gradient.setColorAt(0.5, QColor(20, 20, 30, 240))
+        bg_gradient.setColorAt(1, QColor(30, 30, 40, 240))
+
+        # Draw rounded rectangle background
+        path = QPainterPath()
+        path.addRoundedRect(rect, 20, 20)
+        painter.fillPath(path, QBrush(bg_gradient))
+
+        # Border gradient
+        border_gradient = QLinearGradient(0, 0, self.base_width, 0)
+        border_gradient.setColorAt(0, QColor(100, 150, 255, 200))
+        border_gradient.setColorAt(0.5, QColor(150, 100, 255, 200))
+        border_gradient.setColorAt(1, QColor(100, 150, 255, 200))
+
+        # Draw border
+        pen = QPen(QBrush(border_gradient), 3)
+        painter.setPen(pen)
+        painter.drawPath(path)
+
+        # Draw spinner icon
+        spinner_font = QFont("Arial", 72)
+        painter.setFont(spinner_font)
+        painter.setPen(QColor(100, 150, 255))
+        spinner_rect = QRectF(0, 60, self.base_width, 80)
+        painter.drawText(spinner_rect, Qt.AlignmentFlag.AlignCenter, self.spinner_chars[self.spinner_index])
+
+        # Draw "LOADING TABLE" text
+        loading_font = QFont("Arial", 36, QFont.Weight.Bold)
+        painter.setFont(loading_font)
+        painter.setPen(QColor(255, 255, 255))
+        loading_rect = QRectF(0, 150, self.base_width, 50)
+        painter.drawText(loading_rect, Qt.AlignmentFlag.AlignCenter, "LOADING TABLE")
+
+        # Draw table name
+        name_font = QFont("Arial", 24)
+        painter.setFont(name_font)
+        painter.setPen(QColor(200, 200, 255))
+        name_rect = QRectF(40, 210, self.base_width - 80, 70)
+        painter.drawText(name_rect, Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap, self.table_name)
+
+        painter.end()
+
+    def show_loading(self, table_name: str, rotation_angle: int = 0):
+        """Show the loading popup with table name and rotation"""
+        self.table_name = table_name
+        self.rotation_angle = rotation_angle
+
+        # Fill the entire parent window
+        if self.parent():
+            parent_rect = self.parent().rect()
+            self.setGeometry(0, 0, parent_rect.width(), parent_rect.height())
+
+        # Start animations
+        self.show()
+        self.raise_()
+
+        # Animate opacity from 0 to 1
+        self.opacity = 0.0
+        self.fade_timer = QTimer()
+        self.fade_timer.timeout.connect(self._fade_in_step)
+        self.fade_timer.start(16)  # ~60fps
+
+        self.spinner_timer.start(200)
+
+    def _fade_in_step(self):
+        """Gradually increase opacity for fade-in"""
+        self.opacity = min(1.0, self.opacity + 0.05)
+        self.update()
+        if self.opacity >= 1.0:
+            self.fade_timer.stop()
+
+    def hide_loading(self):
+        """Hide the loading popup with fade-out"""
+        # Stop fade-in if running
+        if hasattr(self, 'fade_timer'):
+            self.fade_timer.stop()
+
+        # Animate opacity from current value to 0
+        self.fade_out_timer = QTimer()
+        self.fade_out_timer.timeout.connect(self._fade_out_step)
+        self.fade_out_timer.start(16)  # ~60fps
+
+    def _fade_out_step(self):
+        """Gradually decrease opacity for fade-out"""
+        self.opacity = max(0.0, self.opacity - 0.05)
+        self.update()
+        if self.opacity <= 0.0:
+            self.fade_out_timer.stop()
+            self.spinner_timer.stop()
+            self.hide()
+
 
 class WheelBackground(QWidget):
     """Semi-circular background widget for the wheel to create a realistic wheel effect"""
@@ -1109,6 +1262,7 @@ class WheelMainWindow(QWidget):
         self.activateWindow()
         self.raise_()
 
+
     def load_tables(self):
         """Load tables from database"""
         if not self.table_service:
@@ -1205,23 +1359,20 @@ class WheelMainWindow(QWidget):
 
         self.logger.info(f"Table selected: {table_name}")
 
+        # Stop table audio when launching
+        if self.table_audio_player.is_playing():
+            self.table_audio_player.stop()
+            self.logger.debug("Stopped table audio for launch")
+
         # Play launch audio if available
         launch_audio = table_data.get('launch_audio', '')
         if launch_audio:
             self.audio_player.play_once(launch_audio)
             self.logger.info(f"Playing launch audio: {launch_audio}")
 
-        # Update displays
+        # Update displays - DON'T update backglass, just show loading screen
         if self.monitor_manager:
-            self.monitor_manager.update_display_content("backglass", {
-                'table_name': table_name,
-                'manufacturer': table_data.get('manufacturer', ''),
-                'year': table_data.get('year', ''),
-                'backglass_video': table_data.get('backglass_video', ''),
-                'backglass_image': table_data.get('backglass_image', '')
-            })
-
-            # Update DMD with video/image if available, otherwise show message
+            # Update DMD with launching message
             dmd_video = table_data.get('dmd_video', '')
             dmd_image = table_data.get('dmd_image', '')
             if dmd_video or dmd_image:
@@ -1235,6 +1386,12 @@ class WheelMainWindow(QWidget):
                     'message': f"LAUNCHING: {table_name[:12].upper()}",
                     'animation': True
                 })
+
+            # Show loading screen on backglass (replaces any content)
+            self.logger.info(f"Requesting loading screen on backglass for '{table_name}'")
+            self.monitor_manager.show_loading("backglass", table_name)
+        else:
+            self.logger.warning("No monitor_manager available for loading screen")
 
         # Launch table
         if self.launch_manager and table_id:
@@ -1281,12 +1438,17 @@ class WheelMainWindow(QWidget):
         # Play navigation sound
         self._play_navigation_sound()
 
-        # Play table audio if enabled and available
+        # Play table audio if enabled and available, otherwise stop any playing audio
         if self.config.audio.table_audio:
             table_audio = table_data.get('table_audio', '')
             if table_audio:
                 self.table_audio_player.play_once(table_audio)
                 self.logger.debug(f"Playing table audio: {table_audio}")
+            else:
+                # Stop table audio if no audio is available for this table
+                if self.table_audio_player.is_playing():
+                    self.table_audio_player.stop()
+                    self.logger.debug("Stopped table audio - no audio for this table")
 
         # Update displays with highlighted table info
         if self.monitor_manager:
@@ -1316,6 +1478,15 @@ class WheelMainWindow(QWidget):
     def _on_table_launched(self, table_path: str):
         """Handle table launched - blank all displays during gameplay"""
         self.logger.info(f"Table launched, clearing displays for gameplay")
+
+        # Hide loading screen on backglass
+        if self.monitor_manager:
+            self.monitor_manager.hide_loading("backglass")
+
+        # Stop launch audio when table actually launches so VPX sounds can be heard
+        if self.audio_player.is_playing():
+            self.audio_player.stop()
+            self.logger.debug("Stopped launch audio for VPX gameplay")
 
         if self.monitor_manager:
             # Blank DMD screen - just black, no text

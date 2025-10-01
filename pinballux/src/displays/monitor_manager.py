@@ -169,6 +169,22 @@ class MonitorManager(QObject):
         if display:
             display.update_content(content_data)
 
+    def show_loading(self, display_type: str, table_name: str):
+        """Show loading screen on a specific display"""
+        display = self.displays.get(display_type)
+        self.logger.debug(f"show_loading: display_type={display_type}, display={display}, has_method={hasattr(display, 'show_loading') if display else False}")
+        if display and hasattr(display, 'show_loading'):
+            self.logger.info(f"Calling show_loading on {display_type} display")
+            display.show_loading(table_name)
+        else:
+            self.logger.warning(f"Cannot show loading on {display_type}: display={'found' if display else 'not found'}, has_method={hasattr(display, 'show_loading') if display else 'N/A'}")
+
+    def hide_loading(self, display_type: str):
+        """Hide loading screen on a specific display"""
+        display = self.displays.get(display_type)
+        if display and hasattr(display, 'hide_loading'):
+            display.hide_loading()
+
     def list_screens(self) -> List[Dict[str, any]]:
         """Get list of available screens with their properties"""
         screen_list = []

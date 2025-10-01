@@ -2,9 +2,9 @@
 Backglass display component for pinball cabinet backglass monitor
 """
 
-from PyQt6.QtWidgets import QVBoxLayout, QLabel, QHBoxLayout
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QPixmap, QFont
+from PyQt6.QtWidgets import QVBoxLayout, QLabel, QHBoxLayout, QWidget
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QRectF
+from PyQt6.QtGui import QPixmap, QFont, QPainter, QColor, QLinearGradient, QBrush, QPen, QPainterPath
 
 from ..core.config import MonitorConfig
 from .base_display import BaseDisplay
@@ -26,9 +26,22 @@ class BackglassDisplay(BaseDisplay):
         self.current_video = None
         self.current_media_type = None  # 'image' or 'video'
 
+        # Loading state
+        self.is_loading = False
+        self.loading_table_name = ""
+        self.loading_spinner_index = 0
+        self.loading_spinner_chars = ["⚡", "✦", "★", "✦"]
+        self.loading_start_time = None
+        self.min_loading_duration_ms = 2000  # Minimum 2 seconds
+        self.pending_hide = False
+
         # Animation timer for future animated backglass support
         self.animation_timer = QTimer()
         self.animation_timer.timeout.connect(self._update_animation)
+
+        # Loading animation timer
+        self.loading_timer = QTimer()
+        self.loading_timer.timeout.connect(self._update_loading_spinner)
 
     def _setup_layout(self):
         """Set up the backglass display layout"""
@@ -76,6 +89,13 @@ class BackglassDisplay(BaseDisplay):
 
     def update_content(self, content_data: dict):
         """Update backglass content"""
+        # Don't update content if we're showing the loading screen
+        if self.is_loading:
+            self.logger.warning(f"BLOCKED: Ignoring update_content because loading screen is active (is_loading={self.is_loading})")
+            import traceback
+            self.logger.debug(f"Call stack:\n{''.join(traceback.format_stack())}")
+            return
+
         table_name = content_data.get('table_name', 'Unknown Table')
         manufacturer = content_data.get('manufacturer', '')
         year = content_data.get('year', '')
@@ -108,6 +128,7 @@ class BackglassDisplay(BaseDisplay):
 
     def _display_backglass_video(self, video_path: str):
         """Display backglass video"""
+        self.logger.info(f"_display_backglass_video called: {video_path}, is_loading={self.is_loading}")
         try:
             # Stop current video if playing
             if self.video_widget.is_playing():
@@ -136,6 +157,7 @@ class BackglassDisplay(BaseDisplay):
 
     def _display_backglass_image(self, image_path: str):
         """Display backglass image"""
+        self.logger.info(f"_display_backglass_image called: {image_path}, is_loading={self.is_loading}")
         try:
             # Stop video if playing
             if self.video_widget.is_playing():
@@ -206,3 +228,114 @@ class BackglassDisplay(BaseDisplay):
         self.current_table = None
         self.current_image = None
         self.current_video = None
+
+    def show_loading(self, table_name: str):
+        """Show loading screen for a table - replaces all backglass content"""
+        from PyQt6.QtCore import QDateTime
+
+        self.logger.info(f"BackglassDisplay: show_loading called for '{table_name}'")
+        self.is_loading = True
+        self.loading_table_name = table_name
+        self.loading_spinner_index = 0
+        self.loading_start_time = QDateTime.currentMSecsSinceEpoch()
+        self.pending_hide = False
+
+        # STOP and HIDE video completely
+        if self.video_widget.is_playing():
+            self.logger.debug("Stopping video playback")
+            self.video_widget.stop()
+        self.video_widget.hide()
+        self.video_widget.setVisible(False)
+
+        # Clear any pixmap from the label
+        self.backglass_label.clear()
+        self.backglass_label.setPixmap(QPixmap())  # Clear any image
+
+        # Make absolutely sure the label is shown and raised to top
+        self.backglass_label.setVisible(True)
+        self.backglass_label.show()
+        self.backglass_label.raise_()
+
+        self.logger.debug(f"Backglass label visible: {self.backglass_label.isVisible()}, size: {self.backglass_label.size()}")
+
+        # Start loading animation
+        self.loading_timer.start(200)  # Update spinner every 200ms
+        self._update_loading_display()
+
+        # Force immediate update
+        self.backglass_label.update()
+        self.update()
+
+        self.logger.info(f"Loading screen started at {self.loading_start_time}, will show for minimum {self.min_loading_duration_ms}ms")
+
+    def hide_loading(self):
+        """Hide loading screen - leave backglass blank during gameplay"""
+        from PyQt6.QtCore import QDateTime
+
+        self.logger.info("BackglassDisplay: hide_loading called")
+
+        # Check if minimum display time has elapsed
+        if self.loading_start_time is not None:
+            elapsed = QDateTime.currentMSecsSinceEpoch() - self.loading_start_time
+            self.logger.debug(f"Loading screen elapsed time: {elapsed}ms (min: {self.min_loading_duration_ms}ms)")
+
+            if elapsed < self.min_loading_duration_ms:
+                # Not enough time has passed, delay hiding
+                remaining = self.min_loading_duration_ms - elapsed
+                self.logger.info(f"Delaying hide_loading by {remaining}ms to meet minimum display time")
+                self.pending_hide = True
+                QTimer.singleShot(int(remaining), self._do_hide_loading)
+                return
+
+        # Minimum time has elapsed, hide immediately
+        self._do_hide_loading()
+
+    def _do_hide_loading(self):
+        """Actually hide the loading screen"""
+        self.logger.info("BackglassDisplay: _do_hide_loading - keeping loading screen visible, VPX will take over")
+        self.is_loading = False
+        self.loading_timer.stop()
+        self.pending_hide = False
+        self.loading_start_time = None
+
+        # Keep the loading screen visible - VPX will use this display for its own backglass
+        # We just stop the spinner animation but leave the text visible
+        self.logger.debug("Loading screen animation stopped, display ready for VPX backglass")
+
+    def _update_loading_spinner(self):
+        """Update the loading spinner animation"""
+        self.loading_spinner_index = (self.loading_spinner_index + 1) % len(self.loading_spinner_chars)
+        self._update_loading_display()
+
+    def _update_loading_display(self):
+        """Update the loading display with current spinner"""
+        spinner = self.loading_spinner_chars[self.loading_spinner_index]
+        loading_text = f"{spinner}\n\nLOADING TABLE\n\n{self.loading_table_name}\n\n{spinner}"
+
+        self.logger.debug(f"Updating loading display: spinner={spinner}, index={self.loading_spinner_index}")
+
+        # Set the text
+        self.backglass_label.setText(loading_text)
+
+        # Apply styling
+        self.backglass_label.setStyleSheet("""
+            QLabel {
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1,
+                    stop:0 #1a1a2e,
+                    stop:0.5 #16213e,
+                    stop:1 #1a1a2e);
+                color: #6496FF;
+                font-size: 48px;
+                font-weight: bold;
+                border: 3px solid #6496FF;
+                border-radius: 10px;
+                padding: 40px;
+            }
+        """)
+
+        # Make sure it's aligned center
+        self.backglass_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        # Force update
+        self.backglass_label.update()
+        self.backglass_label.repaint()
