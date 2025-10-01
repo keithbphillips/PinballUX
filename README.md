@@ -45,12 +45,7 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-5. Install the package:
-```bash
-pip install -e .
-```
-
-6. Add your VPX table files to `pinballux/data/tables/`
+5. Add your VPX table files to `pinballux/data/tables/`
 
 ## Usage
 
