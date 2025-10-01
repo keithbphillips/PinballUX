@@ -56,12 +56,7 @@ pip install -e .
 
 Run PinballUX:
 ```bash
-pinballux
-```
-
-Or run directly:
-```bash
-python pinballux/src/main.py
+python run_pinballux.py
 ```
 
 ### Keyboard Controls
