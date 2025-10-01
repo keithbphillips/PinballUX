@@ -1044,6 +1044,8 @@ class WheelMainWindow(QWidget):
         self.audio_player = AudioPlayer(self)  # For launch sounds
         self.nav_audio_player = AudioPlayer(self)  # For navigation sounds
         self.nav_audio_player.set_volume(0.3)  # Lower volume for UI sounds
+        self.table_audio_player = AudioPlayer(self)  # For table-specific audio
+        self.table_audio_player.set_volume(0.5)  # Medium volume for table audio
 
         # Load navigation sound if available
         self.nav_sound_path = self._find_navigation_sound()
@@ -1179,6 +1181,7 @@ class WheelMainWindow(QWidget):
                     'backglass_video': media_files.get('backglass_video', table.backglass_video or ''),
                     'dmd_image': media_files.get('dmd_image', table.dmd_image or ''),
                     'dmd_video': media_files.get('dmd_video', table.dmd_video or ''),
+                    'table_audio': media_files.get('table_audio', ''),
                     'launch_audio': media_files.get('launch_audio', table.launch_audio or ''),
                     'play_count': table.play_count or 0,
                     'rating': table.rating or 0,
@@ -1274,6 +1277,13 @@ class WheelMainWindow(QWidget):
 
         # Play navigation sound
         self._play_navigation_sound()
+
+        # Play table audio if enabled and available
+        if self.config.audio.table_audio:
+            table_audio = table_data.get('table_audio', '')
+            if table_audio:
+                self.table_audio_player.play_once(table_audio)
+                self.logger.debug(f"Playing table audio: {table_audio}")
 
         # Update displays with highlighted table info
         if self.monitor_manager:

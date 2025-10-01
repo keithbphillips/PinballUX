@@ -61,6 +61,12 @@ class InputConfig:
     right_key: str = "Right"
 
 
+@dataclass
+class AudioConfig:
+    """Audio configuration"""
+    table_audio: bool = True  # Play table audio when navigating to a table
+
+
 class Config:
     """Main configuration class"""
 
@@ -69,6 +75,7 @@ class Config:
         self.displays = DisplayConfig()
         self.vpx = VPXConfig()
         self.input = InputConfig()
+        self.audio = AudioConfig()
         self.load()
 
     def _get_default_config_path(self) -> str:
@@ -108,6 +115,10 @@ class Config:
                 # Load input configuration
                 if 'input' in data:
                     self.input = InputConfig(**data['input'])
+
+                # Load audio configuration
+                if 'audio' in data:
+                    self.audio = AudioConfig(**data['audio'])
 
                 # Update paths to use project-relative paths if they're still using old defaults
                 self._update_default_paths()
@@ -149,7 +160,8 @@ class Config:
                     'topper': asdict(self.displays.topper) if self.displays.topper else None,
                 },
                 'vpx': asdict(self.vpx),
-                'input': asdict(self.input)
+                'input': asdict(self.input),
+                'audio': asdict(self.audio)
             }
 
             with open(self.config_file, 'w') as f:

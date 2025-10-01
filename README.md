@@ -87,6 +87,18 @@ Edit `~/.config/pinballux/config.json` to map each display type to the correct s
 
 Resolution changes are automatically detected on application restart.
 
+### Audio Configuration
+
+Control audio playback in `~/.config/pinballux/config.json`:
+
+```json
+"audio": {
+  "table_audio": true
+}
+```
+
+- **table_audio**: When `true`, plays table-specific audio when navigating to a table in the wheel interface. Audio files should be placed in `pinballux/data/media/audio/table/` and match the table name (e.g., `My Table.mp3`).
+
 ## Usage
 
 Run PinballUX:
@@ -122,6 +134,7 @@ pinballux/data/media/
 │   ├── wheel/          # Wheel images for table selection
 │   └── dmd/            # DMD images
 └── audio/
+    ├── table/          # Table-specific audio (plays when table is highlighted)
     ├── launch/         # Table launch audio
     └── ui/             # UI sound effects
 ```
@@ -134,6 +147,7 @@ Media files must match the table name exactly. For example, for a table named "M
 - **Backglass video**: `My Favorite Table.mp4` → `pinballux/data/media/videos/backglass/`
 - **DMD video**: `My Favorite Table.mp4` → `pinballux/data/media/videos/real_dmd_color/`
 - **Wheel image**: `My Favorite Table.png` → `pinballux/data/media/images/wheel/`
+- **Table audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/table/`
 - **Launch audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/launch/`
 
 ### Media Playback Priority
