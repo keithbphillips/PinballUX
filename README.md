@@ -68,7 +68,7 @@ Edit `~/.config/pinballux/config.json` to map each display type to the correct s
 ```json
 "displays": {
   "playfield": {
-    "screen_number": 0,
+    "screen_number": 3,
     "dmd_mode": "full"
   },
   "backglass": {
