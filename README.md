@@ -1,3 +1,5 @@
+![PinballUX](PinballUX.png)
+
 # PinballUX
 
 A Visual Pinball frontend for Linux with multi-monitor support, inspired by PinballX.
