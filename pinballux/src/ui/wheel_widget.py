@@ -780,21 +780,31 @@ class WheelWidget(QWidget):
         self.background_view.setTransform(transform)
         logger.debug(f"Applied UI rotation transform: {self.rotation_angle}° (transform applied to background_view)")
 
-        # Apply additional transform to wheel_proxy for 270° rotation
-        if hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
-            # Add offset to move selector at 270°
+        # Apply additional transform to wheel_proxy for 90° and 270° rotations
+        if hasattr(self, 'wheel_proxy') and self.rotation_angle == 90:
             wheel_transform = QTransform()
-            wheel_transform.translate(0, 1110)  # Shift down by 1100 pixels
+            # Formula for 90°: horizontal = -(width - height * 1.4), vertical = 0
+            wheel_transform.translate(-(widget_width - widget_height * 1.4), 0)
+            self.wheel_proxy.setTransform(wheel_transform)
+        elif hasattr(self, 'wheel_proxy') and self.rotation_angle == 270:
+            wheel_transform = QTransform()
+            # Formula: horizontal = -(width - height * 1.4), vertical = height * 7/9
+            wheel_transform.translate(-(widget_width - widget_height * 1.4), widget_height * 7 / 9)
             self.wheel_proxy.setTransform(wheel_transform)
         elif hasattr(self, 'wheel_proxy'):
             # Reset wheel_proxy transform for other rotations
             self.wheel_proxy.setTransform(QTransform())
 
-        # Apply additional transform to info_proxy for 270° rotation
-        if hasattr(self, 'info_proxy') and self.rotation_angle == 270:
-            # Add offset to move table info display at 270°
+        # Apply additional transform to info_proxy for 90° and 270° rotations
+        if hasattr(self, 'info_proxy') and self.rotation_angle == 90:
             info_transform = QTransform()
-            info_transform.translate(0, 1120)  # Shift right by 800 pixels
+            # Formula for 90°: horizontal = -(width - height * 1.4), vertical = 0
+            info_transform.translate(-(widget_width - widget_height * 1.4), 0)
+            self.info_proxy.setTransform(info_transform)
+        elif hasattr(self, 'info_proxy') and self.rotation_angle == 270:
+            info_transform = QTransform()
+            # Same formula as wheel_proxy
+            info_transform.translate(-(widget_width - widget_height * 1.4), widget_height * 7 / 9)
             self.info_proxy.setTransform(info_transform)
         elif hasattr(self, 'info_proxy'):
             # Reset info_proxy transform for other rotations
@@ -884,8 +894,6 @@ class WheelWidget(QWidget):
             transform.translate(center_x, center_y)
             transform.rotate(270)
             transform.translate(-center_y, -center_x)  # Note: swapped for 270°
-            # Shift right and slightly up to position at right edge
-            transform.translate(-center_x + 220, center_y - 160)
 
         return transform
 
@@ -902,30 +910,25 @@ class WheelWidget(QWidget):
         center_y = height / 2.0
 
         if normalized_angle == 90:
-            # For 90° rotation: left side is down, need to compensate for video orientation
-            # Rotate 180° to correct the upside-down appearance, then adjust position
+            # For 90° rotation: rotate video 90° counter-clockwise (which is -90° or 270°)
             transform.translate(center_x, center_y)
-            transform.rotate(180)  # First flip to correct orientation
-            transform.translate(-center_x, -center_y)
-            # Then apply the 90° rotation with proper positioning
-            transform.translate(center_x, center_y)
-            transform.rotate(90)
-            # Adjust positioning to center the video properly - move up by about half the height difference
-            offset_y = (height - width) / 2.0  # Additional upward offset to center
-            transform.translate(-center_y, -center_x - offset_y)
+            transform.rotate(270)  # 270° = 90° counter-clockwise
+            # Formula: horizontal = (height - width)/2 - height * 9/70 + height/48, vertical = -(height * 8/9)
+            transform.translate((height - width) / 2 - height * 9 / 70 + height / 48, -(height * 8 / 9))
         elif normalized_angle == 180:
             # For 180° rotation - standard center rotation
             transform.translate(center_x, center_y)
             transform.rotate(180)
             transform.translate(-center_x, -center_y)
         elif normalized_angle == 270:
-            # For 270° rotation: same approach as 90°, then shift to right edge
+            # For 270° rotation: rotate around center, then position at right edge
+            # After 270° rotation, translate to align with right edge of screen
             transform.translate(center_x, center_y)
             transform.rotate(270)
-            transform.translate(-center_y, -center_x)  # Note: swapped for 270°
-            # Shift right and slightly up to position at right edge
-            transform.translate(-center_x + 160, center_y - 160)
-
+            # Formula derived from tested values at different resolutions
+            # Vertical offset is always 8/9 of height
+            # Horizontal offset is (width - height/2)
+            transform.translate(-(width - height / 2), -(height * 8 / 9))
         return transform
 
     def resizeEvent(self, event):
