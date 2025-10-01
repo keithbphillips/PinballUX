@@ -1,4 +1,4 @@
-![PinballUX](PinballUX.png)
+![PinballUX](docs/PinballUX.png)
 
 # PinballUX
 
@@ -46,6 +46,46 @@ pip install -r requirements.txt
 ```
 
 5. Add your VPX table files to `pinballux/data/tables/`
+
+## Ubuntu Display Configuration
+
+**IMPORTANT**: Before running PinballUX, you must configure your Ubuntu display settings correctly for multi-monitor support to work properly.
+
+![Display Settings](docs/Display_Settings.png)
+
+### Display Configuration Requirements:
+
+1. **Primary Display**: Set your **Playfield monitor** as the Primary Display in Ubuntu Settings
+2. **Horizontal Arrangement**: Arrange all displays horizontally (left-to-right)
+3. **Top Alignment**: Align all displays to the top edge
+
+PinballUX relies on Ubuntu's display configuration and screen numbering. The application will detect screens in the order Ubuntu assigns them (0, 1, 2, etc.) and position windows accordingly.
+
+### Configuration File
+
+Edit `~/.config/pinballux/config.json` to map each display type to the correct screen number:
+
+```json
+"displays": {
+  "playfield": {
+    "screen_number": 0,
+    "dmd_mode": "full"
+  },
+  "backglass": {
+    "screen_number": 2,
+    "dmd_mode": "full"
+  },
+  "dmd": {
+    "screen_number": 1,
+    "dmd_mode": "native"
+  }
+}
+```
+
+- **screen_number**: Which physical screen (0-based index) for this display
+- **dmd_mode**: `"native"` (original size) or `"full"` (scaled to screen)
+
+Resolution changes are automatically detected on application restart.
 
 ## Usage
 

@@ -81,22 +81,45 @@ class PinballUXApp(QMainWindow):
         self.logger.info("PinballUX application initialized")
 
     def _position_main_window(self):
-        """Position the main window on the primary display"""
+        """Position the main window on the configured playfield display"""
         if self.config.displays.playfield:
-            # Use configured playfield monitor
-            monitor_config = self.config.displays.playfield
-            self.setGeometry(
-                monitor_config.x,
-                monitor_config.y,
-                monitor_config.width,
-                monitor_config.height
+            # Use configured playfield monitor - resolve screen and geometry through monitor manager
+            self.target_screen, x, y, width, height = self.monitor_manager._resolve_monitor_geometry(
+                self.config.displays.playfield
             )
+
+            # Set initial geometry
+            screen_geom = self.target_screen.geometry()
+            self.setGeometry(screen_geom.x(), screen_geom.y(), screen_geom.width(), screen_geom.height())
         else:
             # Use primary screen
+            self.target_screen = None
             screen = QApplication.primaryScreen()
             if screen:
                 geometry = screen.geometry()
                 self.setGeometry(geometry)
+
+    def showEvent(self, event):
+        """Handle show event - move window to target screen"""
+        super().showEvent(event)
+
+        # Move to target screen after the window is shown
+        if hasattr(self, 'target_screen') and self.target_screen:
+            # Get the screen geometry
+            screen_geom = self.target_screen.geometry()
+
+            self.logger.info(
+                f"Moving Playfield to screen at "
+                f"({screen_geom.x()}, {screen_geom.y()}) {screen_geom.width()}x{screen_geom.height()}"
+            )
+
+            # Move window to the target screen's position
+            self.move(screen_geom.x(), screen_geom.y())
+            self.resize(screen_geom.width(), screen_geom.height())
+
+            # Force window to be on correct screen via windowHandle if available
+            if self.windowHandle():
+                self.windowHandle().setScreen(self.target_screen)
 
     def show(self):
         """Show the application and all display windows"""

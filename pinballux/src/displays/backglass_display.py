@@ -17,8 +17,8 @@ class BackglassDisplay(BaseDisplay):
     # Signals
     backglass_updated = pyqtSignal(str)  # image path
 
-    def __init__(self, monitor_config: MonitorConfig):
-        super().__init__(monitor_config)
+    def __init__(self, monitor_config: MonitorConfig, target_screen=None):
+        super().__init__(monitor_config, target_screen=target_screen)
 
         # Current content
         self.current_table = None
@@ -67,6 +67,9 @@ class BackglassDisplay(BaseDisplay):
         self.info_layout.addWidget(self.table_info_label)
 
         layout.addLayout(self.info_layout)
+
+        # Hide info area by default
+        self.show_table_info(False)
 
         # Set default content
         self._show_default_content()

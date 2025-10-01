@@ -30,8 +30,8 @@ class MonitorManager(QObject):
         # Active display windows
         self.displays: Dict[str, BaseDisplay] = {}
 
-        # Available screens
-        self.screens: Dict[str, QScreen] = {}
+        # Available screens by index
+        self.screens: List[QScreen] = []
 
         self._detect_screens()
 
@@ -39,53 +39,77 @@ class MonitorManager(QObject):
         """Detect available screens/monitors"""
         app = QApplication.instance()
         if app:
-            screens = app.screens()
-            self.logger.info(f"Detected {len(screens)} screen(s)")
+            self.screens = app.screens()
+            self.logger.info(f"Detected {len(self.screens)} screen(s)")
 
-            for i, screen in enumerate(screens):
+            for i, screen in enumerate(self.screens):
                 screen_name = screen.name() or f"Screen_{i}"
-                self.screens[screen_name] = screen
                 geometry = screen.geometry()
                 self.logger.info(
-                    f"Screen '{screen_name}': {geometry.width()}x{geometry.height()} "
+                    f"Screen {i} ('{screen_name}'): {geometry.width()}x{geometry.height()} "
                     f"at ({geometry.x()}, {geometry.y()})"
                 )
 
-    def get_screen_by_position(self, x: int, y: int) -> Optional[QScreen]:
-        """Find screen that contains the given position"""
-        for screen in self.screens.values():
-            if screen.geometry().contains(x, y):
-                return screen
+    def get_screen_by_number(self, screen_number: int) -> Optional[QScreen]:
+        """Get screen by index number"""
+        if 0 <= screen_number < len(self.screens):
+            return self.screens[screen_number]
         return None
+
+    def _resolve_monitor_geometry(self, monitor_config: MonitorConfig) -> tuple[QScreen, int, int, int, int]:
+        """Resolve final geometry for a monitor configuration
+
+        Returns: (screen, x, y, width, height)
+        Returns the target QScreen object and geometry.
+        If manual overrides are set, use those. Otherwise, auto-detect from screen_number.
+        """
+        screen = self.get_screen_by_number(monitor_config.screen_number)
+        if not screen:
+            self.logger.error(
+                f"Screen {monitor_config.screen_number} not found. "
+                f"Available screens: 0-{len(self.screens)-1}"
+            )
+            # Fallback to primary screen
+            screen = QApplication.instance().primaryScreen()
+            return (screen, 0, 0, 1920, 1080)
+
+        geometry = screen.geometry()
+
+        # Check if all manual overrides are provided
+        if all(v is not None for v in [monitor_config.x, monitor_config.y,
+                                        monitor_config.width, monitor_config.height]):
+            return (screen, monitor_config.x, monitor_config.y,
+                   monitor_config.width, monitor_config.height)
+
+        # Use screen's native geometry
+        return (screen, geometry.x(), geometry.y(), geometry.width(), geometry.height())
 
     def create_display(self, display_type: str, monitor_config: MonitorConfig) -> Optional[BaseDisplay]:
         """Create a display window for the specified monitor"""
         try:
-            # Create the appropriate display type
+            # Resolve geometry and target screen (auto-detect or use manual overrides)
+            target_screen, x, y, width, height = self._resolve_monitor_geometry(monitor_config)
+
+            # Create the appropriate display type, passing target screen
             display = None
 
             if display_type == "backglass":
-                display = BackglassDisplay(monitor_config)
+                display = BackglassDisplay(monitor_config, target_screen=target_screen)
             elif display_type in ["dmd", "fulldmd"]:
-                display = DMDDisplay(monitor_config, is_full_dmd=(display_type == "fulldmd"))
+                display = DMDDisplay(monitor_config, target_screen=target_screen, is_full_dmd=(display_type == "fulldmd"))
             elif display_type == "topper":
-                display = TopperDisplay(monitor_config)
+                display = TopperDisplay(monitor_config, target_screen=target_screen)
             else:
                 self.logger.warning(f"Unknown display type: {display_type}")
                 return None
 
-            # Position the display
-            display.setGeometry(
-                monitor_config.x,
-                monitor_config.y,
-                monitor_config.width,
-                monitor_config.height
-            )
-
             # Store the display
             self.displays[display_type] = display
 
-            self.logger.info(f"Created {display_type} display at ({monitor_config.x}, {monitor_config.y})")
+            self.logger.info(
+                f"Created {display_type} display for screen {monitor_config.screen_number} "
+                f"({target_screen.name()})"
+            )
             self.display_created.emit(display_type, display)
 
             return display
@@ -148,10 +172,11 @@ class MonitorManager(QObject):
     def list_screens(self) -> List[Dict[str, any]]:
         """Get list of available screens with their properties"""
         screen_list = []
-        for name, screen in self.screens.items():
+        for i, screen in enumerate(self.screens):
             geometry = screen.geometry()
             screen_list.append({
-                'name': name,
+                'number': i,
+                'name': screen.name() or f"Screen_{i}",
                 'x': geometry.x(),
                 'y': geometry.y(),
                 'width': geometry.width(),

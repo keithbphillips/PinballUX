@@ -13,17 +13,25 @@ from dataclasses import dataclass, asdict
 class MonitorConfig:
     """Configuration for a single monitor"""
     name: str
-    x: int = 0
-    y: int = 0
-    width: int = 1920
-    height: int = 1080
+    screen_number: int  # Which physical screen (0, 1, 2, etc.)
     rotation: int = 0  # 0, 90, 180, 270
     enabled: bool = True
+    # Optional manual overrides - if None, auto-detect from screen_number
+    x: Optional[int] = None
+    y: Optional[int] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    # DMD-specific display mode: "native" or "full"
+    dmd_mode: str = "full"  # "native" keeps original size, "full" scales to screen
 
 
 @dataclass
 class DisplayConfig:
-    """Display configuration for all monitors"""
+    """Display configuration for all monitors
+
+    Each display type maps to a physical screen number.
+    Resolution is auto-detected unless manually specified.
+    """
     playfield: Optional[MonitorConfig] = None
     backglass: Optional[MonitorConfig] = None
     dmd: Optional[MonitorConfig] = None
@@ -69,6 +77,12 @@ class Config:
         config_dir.mkdir(parents=True, exist_ok=True)
         return str(config_dir / "config.json")
 
+    def _load_monitor_config(self, data: Optional[Dict[str, Any]]) -> Optional[MonitorConfig]:
+        """Load a MonitorConfig from dictionary data"""
+        if not data:
+            return None
+        return MonitorConfig(**data)
+
     def load(self) -> None:
         """Load configuration from file"""
         if os.path.exists(self.config_file):
@@ -80,11 +94,11 @@ class Config:
                 if 'displays' in data:
                     displays_data = data['displays']
                     self.displays = DisplayConfig(
-                        playfield=MonitorConfig(**displays_data.get('playfield', {})) if displays_data.get('playfield') else None,
-                        backglass=MonitorConfig(**displays_data.get('backglass', {})) if displays_data.get('backglass') else None,
-                        dmd=MonitorConfig(**displays_data.get('dmd', {})) if displays_data.get('dmd') else None,
-                        fulldmd=MonitorConfig(**displays_data.get('fulldmd', {})) if displays_data.get('fulldmd') else None,
-                        topper=MonitorConfig(**displays_data.get('topper', {})) if displays_data.get('topper') else None,
+                        playfield=self._load_monitor_config(displays_data.get('playfield')),
+                        backglass=self._load_monitor_config(displays_data.get('backglass')),
+                        dmd=self._load_monitor_config(displays_data.get('dmd')),
+                        fulldmd=self._load_monitor_config(displays_data.get('fulldmd')),
+                        topper=self._load_monitor_config(displays_data.get('topper')),
                     )
 
                 # Load VPX configuration
@@ -147,9 +161,9 @@ class Config:
     def _create_default_config(self) -> None:
         """Create default configuration"""
         self.displays = DisplayConfig(
-            playfield=MonitorConfig("Playfield", 0, 0, 1920, 1080),
-            backglass=MonitorConfig("Backglass", 1920, 0, 1920, 1080),
-            dmd=MonitorConfig("DMD", 0, 1080, 512, 128)
+            playfield=MonitorConfig("Playfield", screen_number=0, rotation=0, enabled=True),
+            backglass=MonitorConfig("Backglass", screen_number=1, rotation=0, enabled=True),
+            dmd=MonitorConfig("DMD", screen_number=2, rotation=0, enabled=False)
         )
 
         # Get project root directory

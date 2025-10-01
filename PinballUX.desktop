@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PinballUX
+Comment=Visual Pinball Frontend for Linux
+Exec=/home/keith/pinballUX/launch_pinballux.sh
+Path=/home/keith/pinballUX
+Icon=/home/keith/pinballUX/PinballUX.png
+Terminal=false
+Categories=Game;Arcade;
+StartupNotify=true

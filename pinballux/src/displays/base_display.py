@@ -19,9 +19,10 @@ class BaseDisplay(QWidget):
     content_updated = pyqtSignal(dict)
     display_clicked = pyqtSignal()
 
-    def __init__(self, monitor_config: MonitorConfig):
+    def __init__(self, monitor_config: MonitorConfig, target_screen=None):
         super().__init__()
         self.monitor_config = monitor_config
+        self.target_screen = target_screen
         self.logger = get_logger(__name__)
 
         self._setup_window()
@@ -41,6 +42,28 @@ class BaseDisplay(QWidget):
         # Apply rotation if specified
         if self.monitor_config.rotation != 0:
             self._apply_rotation()
+
+    def showEvent(self, event):
+        """Handle show event - move window to target screen"""
+        super().showEvent(event)
+
+        # Move to target screen after the window is shown
+        if self.target_screen:
+            # Get the screen geometry
+            screen_geom = self.target_screen.geometry()
+
+            self.logger.info(
+                f"Moving {self.monitor_config.name} to screen at "
+                f"({screen_geom.x()}, {screen_geom.y()}) {screen_geom.width()}x{screen_geom.height()}"
+            )
+
+            # Move window to the target screen's position
+            self.move(screen_geom.x(), screen_geom.y())
+            self.resize(screen_geom.width(), screen_geom.height())
+
+            # Force window to be on correct screen via windowHandle if available
+            if self.windowHandle():
+                self.windowHandle().setScreen(self.target_screen)
 
     def _apply_rotation(self):
         """Apply rotation transformation to the display"""

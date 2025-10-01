@@ -17,7 +17,7 @@ class DMDDisplay(BaseDisplay):
     # Signals
     dmd_updated = pyqtSignal(str)  # status or content
 
-    def __init__(self, monitor_config: MonitorConfig, is_full_dmd: bool = False):
+    def __init__(self, monitor_config: MonitorConfig, target_screen=None, is_full_dmd: bool = False):
         # DMD properties - initialize before calling super()
         self.is_full_dmd = is_full_dmd
         self.dot_size = 3 if is_full_dmd else 2
@@ -28,7 +28,10 @@ class DMDDisplay(BaseDisplay):
         self.scroll_position = 0
         self.current_media_type = None  # 'video', 'image', or 'text'
 
-        super().__init__(monitor_config)
+        # Get display mode from config (native or full)
+        self.dmd_display_mode = monitor_config.dmd_mode if hasattr(monitor_config, 'dmd_mode') else "full"
+
+        super().__init__(monitor_config, target_screen=target_screen)
 
         # Animation timer for scrolling text and effects
         self.animation_timer = QTimer()
@@ -67,20 +70,39 @@ class DMDDisplay(BaseDisplay):
             "font-weight: bold; "
             "border: 1px solid #444444;"
         )
-        self.dmd_label.setMinimumSize(
-            self.dmd_width * (self.dot_size + self.dot_spacing),
-            self.dmd_height * (self.dot_size + self.dot_spacing)
-        )
 
-        frame_layout.addWidget(self.dmd_label)
+        # Set sizing based on display mode
+        if self.dmd_display_mode == "native":
+            # Native mode: fixed size based on DMD dimensions
+            self.dmd_label.setFixedSize(
+                self.dmd_width * (self.dot_size + self.dot_spacing),
+                self.dmd_height * (self.dot_size + self.dot_spacing)
+            )
+            self.dmd_label.setScaledContents(False)
+        else:
+            # Full mode: expand to fill available space
+            self.dmd_label.setScaledContents(True)
+            # Set size policy to expand
+            from PyQt6.QtWidgets import QSizePolicy
+            self.dmd_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+
+        frame_layout.addWidget(self.dmd_label, 1)  # stretch factor 1 to expand
 
         # Video widget for DMD videos
         self.video_widget = VideoWidget(self)
         self.video_widget.hide()  # Initially hidden
-        # Set max size to prevent over-scaling and blur
-        if not self.is_full_dmd:
-            self.video_widget.setMaximumHeight(200)
-        frame_layout.addWidget(self.video_widget)
+        # Set sizing based on display mode
+        if self.dmd_display_mode == "native":
+            # Native mode: fixed size
+            self.video_widget.setFixedSize(
+                self.dmd_width * 4,  # 512px wide for 128-dot DMD
+                self.dmd_height * 4   # 128px high for 32-dot DMD
+            )
+        else:
+            # Full mode: expand to fill available space
+            from PyQt6.QtWidgets import QSizePolicy
+            self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        frame_layout.addWidget(self.video_widget, 1)  # stretch factor 1 to expand
 
         # Status bar for full DMD
         if self.is_full_dmd:
@@ -153,12 +175,18 @@ class DMDDisplay(BaseDisplay):
             self.dmd_label.hide()
             self.video_widget.show()
 
-            # Enable 2x scaling for small DMD videos
-            self.video_widget.scale_small_videos = True
-            self.video_widget.min_video_width = 512
+            # Configure scaling based on display mode
+            if self.dmd_display_mode == "native":
+                # Native mode: no scaling
+                self.video_widget.scale_small_videos = False
+            else:
+                # Full mode: enable 2x scaling for small DMD videos
+                self.video_widget.scale_small_videos = True
+                self.video_widget.min_video_width = 512
 
             # Load and play video
-            if self.video_widget.load_video(video_path, scale_small_videos=True, min_width=512):
+            scale_enabled = self.dmd_display_mode == "full"
+            if self.video_widget.load_video(video_path, scale_small_videos=scale_enabled, min_width=512 if scale_enabled else 0):
                 self.video_widget.play()
                 self.video_widget.set_muted(True)  # DMD videos typically silent
 
@@ -189,13 +217,18 @@ class DMDDisplay(BaseDisplay):
             from PyQt6.QtGui import QPixmap
             pixmap = QPixmap(image_path)
             if not pixmap.isNull():
-                # Use FastTransformation (nearest-neighbor) for sharp pixels
-                scaled_pixmap = pixmap.scaled(
-                    self.dmd_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.FastTransformation
-                )
-                self.dmd_label.setPixmap(scaled_pixmap)
+                if self.dmd_display_mode == "native":
+                    # Native mode: no scaling, show at original size
+                    self.dmd_label.setPixmap(pixmap)
+                else:
+                    # Full mode: scale to fit label size
+                    # Use FastTransformation (nearest-neighbor) for sharp pixels
+                    scaled_pixmap = pixmap.scaled(
+                        self.dmd_label.size(),
+                        Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.FastTransformation
+                    )
+                    self.dmd_label.setPixmap(scaled_pixmap)
             else:
                 self.logger.warning(f"Failed to load DMD image: {image_path}")
                 self._display_message("IMAGE LOAD ERROR")

@@ -16,8 +16,8 @@ class TopperDisplay(BaseDisplay):
     # Signals
     topper_effect_changed = pyqtSignal(str)  # effect name
 
-    def __init__(self, monitor_config: MonitorConfig):
-        super().__init__(monitor_config)
+    def __init__(self, monitor_config: MonitorConfig, target_screen=None):
+        super().__init__(monitor_config, target_screen=target_screen)
 
         # Current state
         self.current_effect = "idle"
