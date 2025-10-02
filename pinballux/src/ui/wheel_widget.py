@@ -387,6 +387,7 @@ class WheelWidget(QWidget):
     # Signals
     table_selected = pyqtSignal(dict)  # table_data
     table_highlighted = pyqtSignal(dict)  # table_data
+    rotation_changed = pyqtSignal(int)  # rotation_angle
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -919,6 +920,9 @@ class WheelWidget(QWidget):
 
         self._apply_rotation_transform()
 
+        # Emit signal so parent can save to config
+        self.rotation_changed.emit(self.rotation_angle)
+
     def _apply_rotation_transform(self):
         """Apply the current rotation transform to the display"""
         if not hasattr(self, 'background_view'):
@@ -1236,16 +1240,21 @@ class WheelMainWindow(QWidget):
         self.wheel_widget = WheelWidget()
         self.wheel_widget.table_selected.connect(self.on_table_selected)
         self.wheel_widget.table_highlighted.connect(self.on_table_highlighted)
+        self.wheel_widget.rotation_changed.connect(self.on_rotation_changed)
 
         # Set rotation from config if available
-        if self.config and self.config.displays.playfield and self.config.displays.playfield.rotation != 0:
+        if self.config and self.config.displays.playfield:
             target_rotation = self.config.displays.playfield.rotation
+            self.logger.info(f"Applying playfield rotation from config: {target_rotation}°")
             # Find the index for the target rotation
             if target_rotation in self.wheel_widget.rotation_angles:
                 self.wheel_widget.rotation_index = self.wheel_widget.rotation_angles.index(target_rotation)
                 self.wheel_widget.rotation_angle = target_rotation
                 # Apply the rotation
                 self.wheel_widget._apply_rotation_transform()
+                self.logger.info(f"Playfield rotation set to {target_rotation}°")
+            else:
+                self.logger.warning(f"Invalid rotation angle in config: {target_rotation}, valid values are {self.wheel_widget.rotation_angles}")
 
         layout.addWidget(self.wheel_widget)
 
@@ -1512,6 +1521,17 @@ class WheelMainWindow(QWidget):
         if self.wheel_widget and self.wheel_widget.tables and 0 <= self.wheel_widget.current_index < len(self.wheel_widget.tables):
             current_table = self.wheel_widget.tables[self.wheel_widget.current_index]
             self.on_table_highlighted(current_table)
+
+    def on_rotation_changed(self, rotation_angle: int):
+        """Handle rotation change - save to config"""
+        self.logger.info(f"Rotation changed to {rotation_angle}°, saving to config")
+
+        if self.config and self.config.displays.playfield:
+            self.config.displays.playfield.rotation = rotation_angle
+            self.config.save()
+            self.logger.info(f"Saved playfield rotation to config: {rotation_angle}°")
+        else:
+            self.logger.warning("Cannot save rotation: config or playfield config not available")
 
     def handle_input_action(self, action: InputAction):
         """Handle input actions from keyboard or joystick"""
