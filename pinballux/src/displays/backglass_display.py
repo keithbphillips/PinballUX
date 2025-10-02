@@ -61,6 +61,9 @@ class BackglassDisplay(BaseDisplay):
         self.video_widget.hide()  # Initially hidden
         layout.addWidget(self.video_widget, 1)
 
+        # Connect video looping once here, not every time a video loads
+        self.video_widget.playback_finished.connect(self._on_video_finished)
+
         # Optional info area at bottom (can be hidden)
         self.info_layout = QHBoxLayout()
         self.info_layout.setContentsMargins(10, 5, 10, 5)
@@ -143,8 +146,7 @@ class BackglassDisplay(BaseDisplay):
                 self.video_widget.play()
                 self.video_widget.set_muted(False)  # Play with audio
 
-                # Loop video
-                self.video_widget.playback_finished.connect(lambda: self.video_widget.play())
+                # Video looping is handled by _on_video_finished, connected in _setup_layout
 
                 self.current_media_type = 'video'
                 self.logger.info(f"Loaded backglass video: {video_path}")
@@ -154,6 +156,12 @@ class BackglassDisplay(BaseDisplay):
         except Exception as e:
             self.logger.error(f"Failed to display backglass video {video_path}: {e}")
             self._show_default_content()
+
+    def _on_video_finished(self):
+        """Handle video playback finished - loop the video"""
+        if self.current_media_type == 'video' and not self.is_loading:
+            # Restart the video for looping
+            self.video_widget.play()
 
     def _display_backglass_image(self, image_path: str):
         """Display backglass image"""

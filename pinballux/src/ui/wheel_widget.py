@@ -708,8 +708,7 @@ class WheelWidget(QWidget):
         if self.animation_failures > 0:
             self.animation_failures = max(0, self.animation_failures - 1)
             logger.debug(f"Animation succeeded, failure count reduced to: {self.animation_failures}")
-        # Update table info after animation
-        self.update_table_info()
+        # Note: table info already updated at animation start (line 696) for responsive feedback
 
     def _animation_safety_reset(self):
         """Safety reset for animation flag in case animation doesn't complete properly"""

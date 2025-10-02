@@ -104,6 +104,9 @@ class DMDDisplay(BaseDisplay):
             self.video_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         frame_layout.addWidget(self.video_widget, 1)  # stretch factor 1 to expand
 
+        # Connect video looping once here, not every time a video loads
+        self.video_widget.playback_finished.connect(self._on_video_finished)
+
         # Status bar for full DMD
         if self.is_full_dmd:
             self.status_layout = QHBoxLayout()
@@ -190,8 +193,7 @@ class DMDDisplay(BaseDisplay):
                 self.video_widget.play()
                 self.video_widget.set_muted(True)  # DMD videos typically silent
 
-                # Loop video
-                self.video_widget.playback_finished.connect(lambda: self.video_widget.play())
+                # Video looping is handled by _on_video_finished, connected in _setup_layout
 
                 self.current_media_type = 'video'
                 self.logger.info(f"Loaded DMD video: {video_path}")
@@ -201,6 +203,12 @@ class DMDDisplay(BaseDisplay):
         except Exception as e:
             self.logger.error(f"Failed to display DMD video {video_path}: {e}")
             self._display_message("VIDEO ERROR")
+
+    def _on_video_finished(self):
+        """Handle video playback finished - loop the video"""
+        if self.current_media_type == 'video':
+            # Restart the video for looping
+            self.video_widget.play()
 
     def _display_image(self, image_path: str):
         """Display an image on the DMD"""

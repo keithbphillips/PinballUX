@@ -36,7 +36,28 @@ class PinballUXApp(QMainWindow):
         self.monitor_manager = None
         self.main_window = None
 
-        self._setup_application()
+        # Set window properties early
+        self.setWindowTitle("PinballUX")
+        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
+
+        # Show a simple black screen immediately to be responsive
+        self._show_loading_screen()
+
+        # Defer heavy initialization until after event loop starts
+        QTimer.singleShot(0, self._setup_application)
+
+    def _show_loading_screen(self):
+        """Show a simple loading screen while initializing"""
+        loading_widget = QWidget()
+        loading_widget.setStyleSheet("background-color: black;")
+        loading_layout = QVBoxLayout(loading_widget)
+
+        loading_label = QLabel("Loading PinballUX...")
+        loading_label.setStyleSheet("color: white; font-size: 24px;")
+        loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(loading_label)
+
+        self.setCentralWidget(loading_widget)
 
     def _setup_application(self):
         """Set up the main application"""
@@ -58,7 +79,12 @@ class PinballUXApp(QMainWindow):
         # Initialize monitor manager
         self.monitor_manager = MonitorManager(self.config)
 
+        # Show additional displays BEFORE creating wheel window so they're ready to receive content
+        if self.monitor_manager:
+            self.monitor_manager.show_displays()
+
         # Set up the main window (wheel interface)
+        # This will load tables and emit table_highlighted signal, so displays must exist first
         self.main_window = WheelMainWindow(self.config, self.monitor_manager, self.table_service, self.launch_manager)
         self.setCentralWidget(self.main_window)
 
@@ -66,11 +92,6 @@ class PinballUXApp(QMainWindow):
         self.main_window.table_selected.connect(self.table_selected.emit)
         self.main_window.exit_requested.connect(self.exit_requested.emit)
         self.exit_requested.connect(self.close)
-
-        # Set window properties
-        self.setWindowTitle("PinballUX")
-        # Enable frameless fullscreen mode
-        self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
 
         # Position on primary display initially
         self._position_main_window()
@@ -125,9 +146,7 @@ class PinballUXApp(QMainWindow):
         """Show the application and all display windows"""
         super().show()
 
-        # Show additional displays if configured
-        if self.monitor_manager:
-            self.monitor_manager.show_displays()
+        # Note: Additional displays shown in _setup_application after initialization
 
         self.logger.info("PinballUX application shown")
 
