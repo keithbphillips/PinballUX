@@ -18,12 +18,17 @@ FRONTEND_ACTIONS = [
 ]
 
 # Gameplay actions (Visual Pinball - these also work in PinballUX)
+# Example VPX config values:
+#   JoyLFlipKey = 10, JoyRFlipKey = 11
+#   JoyPlungerKey = 7, JoyAddCreditKey = 1
+#   JoyLMagnaSave = 9, JoyRMagnaSave = 8
+#   JoyStartGameKey = 2, JoyExitGameKey = 3
 GAMEPLAY_ACTIONS = [
     ('FLIPPERS', 'Left/Right flippers', ['JoyLFlipKey', 'JoyRFlipKey']),  # Will ask twice
     ('PLUNGER', 'Launch ball', 'JoyPlungerKey'),
     ('START', 'Start game', 'JoyStartGameKey'),
     ('MENU', 'Open menu / Add credit', 'JoyAddCreditKey'),
-    ('PAUSE', 'Pause game', 'JoyPauseKey'),
+    ('MAGNASAVE', 'MagnaSave buttons', ['JoyLMagnaSave', 'JoyRMagnaSave']),  # Will ask twice
     ('EXIT_TABLE', 'Exit table (VPX only)', 'JoyExitGameKey'),
 ]
 
@@ -215,11 +220,23 @@ def main():
             right_button = wait_for_button(joystick)
             if right_button is not None:
                 vpx_mappings['JoyRFlipKey'] = right_button + 1  # VPX uses 1-based
+        # Handle MAGNASAVE specially (needs two buttons)
+        elif action == 'MAGNASAVE':
+            print(f"\nLEFT MAGNASAVE")
+            left_button = wait_for_button(joystick)
+            if left_button is not None:
+                pinballux_mappings['MAGNASAVE'] = left_button
+                vpx_mappings['JoyLMagnaSave'] = left_button + 1  # VPX uses 1-based
+
+            print(f"\nRIGHT MAGNASAVE")
+            right_button = wait_for_button(joystick)
+            if right_button is not None:
+                vpx_mappings['JoyRMagnaSave'] = right_button + 1  # VPX uses 1-based
         else:
             print(f"\n{action} ({description})")
             button = wait_for_button(joystick)
             if button is not None:
-                # Don't add EXIT_TABLE to PinballUX (only VPX)
+                # Don't add optional VPX-only actions to PinballUX
                 if action != 'EXIT_TABLE':
                     pinballux_mappings[action] = button
                 if vpx_key:
@@ -249,8 +266,15 @@ def main():
             if 'JoyRFlipKey' in vpx_mappings:
                 print(f"  Button {vpx_mappings['JoyRFlipKey']-1:2d} -> Right Flipper")
                 gameplay_mapped = True
+        elif action == 'MAGNASAVE':
+            if 'JoyLMagnaSave' in vpx_mappings:
+                print(f"  Button {vpx_mappings['JoyLMagnaSave']-1:2d} -> Left MagnaSave")
+                gameplay_mapped = True
+            if 'JoyRMagnaSave' in vpx_mappings:
+                print(f"  Button {vpx_mappings['JoyRMagnaSave']-1:2d} -> Right MagnaSave")
+                gameplay_mapped = True
         elif action == 'EXIT_TABLE':
-            # EXIT_TABLE is VPX-only, check vpx_mappings
+            # VPX-only action, check vpx_mappings
             if vpx_key and vpx_key in vpx_mappings:
                 print(f"  Button {vpx_mappings[vpx_key]-1:2d} -> {action:15s} ({description})")
                 gameplay_mapped = True
