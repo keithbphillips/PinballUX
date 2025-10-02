@@ -1210,7 +1210,7 @@ class WheelMainWindow(QWidget):
         self.nav_sound_path = self._find_navigation_sound()
 
         # Initialize input manager
-        self.input_manager = InputManager(self)
+        self.input_manager = InputManager(config=self.config, parent=self)
         self.input_manager.action_triggered.connect(self.handle_input_action)
 
         # Connect to launch manager signals
@@ -1487,6 +1487,11 @@ class WheelMainWindow(QWidget):
         """Handle table launched - blank all displays during gameplay"""
         self.logger.info(f"Table launched, clearing displays for gameplay")
 
+        # Stop input polling to avoid interfering with VPX input
+        if self.input_manager:
+            self.input_manager.stop_polling()
+            self.logger.info("Stopped input polling - VPX will handle all input")
+
         # Hide loading screen on backglass
         if self.monitor_manager:
             self.monitor_manager.hide_loading("backglass")
@@ -1515,6 +1520,11 @@ class WheelMainWindow(QWidget):
     def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
         """Handle table exit - restore displays"""
         self.logger.info(f"Table exited, restoring displays")
+
+        # Restart input polling for frontend navigation
+        if self.input_manager:
+            self.input_manager.start_polling()
+            self.logger.info("Restarted input polling - PinballUX controls active")
 
         # Restore the current table's display content
         if self.wheel_widget and self.wheel_widget.tables and 0 <= self.wheel_widget.current_index < len(self.wheel_widget.tables):

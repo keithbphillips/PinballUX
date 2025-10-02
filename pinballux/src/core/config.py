@@ -59,6 +59,13 @@ class InputConfig:
     down_key: str = "Down"
     left_key: str = "Left"
     right_key: str = "Right"
+    # Joystick button mappings (action_name -> button_number)
+    joystick_buttons: Dict[str, int] = None
+
+    def __post_init__(self):
+        """Initialize default joystick buttons if None"""
+        if self.joystick_buttons is None:
+            self.joystick_buttons = {}
 
 
 @dataclass

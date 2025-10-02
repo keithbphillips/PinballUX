@@ -49,9 +49,10 @@ class InputManager(QObject):
     # Signals for input actions
     action_triggered = pyqtSignal(InputAction)
 
-    def __init__(self, parent=None):
+    def __init__(self, config=None, parent=None):
         super().__init__(parent)
         self.logger = get_logger(__name__)
+        self.config = config
 
         # Input state
         self.joysticks = []
@@ -129,25 +130,40 @@ class InputManager(QObject):
             InputBinding(InputAction.EXTRA_BALL, key_code=Qt.Key.Key_2),
             InputBinding(InputAction.PAUSE, key_code=Qt.Key.Key_P),
             InputBinding(InputAction.MENU, key_code=Qt.Key.Key_Tab),
-
-            # Default joystick bindings (if joystick available)
-            # Navigation with D-pad
-            InputBinding(InputAction.WHEEL_LEFT, joystick_hat=0, joystick_hat_direction='left'),
-            InputBinding(InputAction.WHEEL_RIGHT, joystick_hat=0, joystick_hat_direction='right'),
-
-            # Navigation with analog stick
-            InputBinding(InputAction.WHEEL_LEFT, joystick_axis=0, joystick_axis_direction='negative'),
-            InputBinding(InputAction.WHEEL_RIGHT, joystick_axis=0, joystick_axis_direction='positive'),
-
-            # Buttons
-            InputBinding(InputAction.SELECT, joystick_button=0),  # Usually A/X button
-            InputBinding(InputAction.EXIT, joystick_button=1),   # Usually B/O button
-            InputBinding(InputAction.FLIPPERS, joystick_button=4),  # Usually L1/LB
-            InputBinding(InputAction.FLIPPERS, joystick_button=5),  # Usually R1/RB
-            InputBinding(InputAction.PLUNGER, joystick_button=2),   # Usually Y/Triangle
-            InputBinding(InputAction.START, joystick_button=9),     # Usually Start
-            InputBinding(InputAction.MENU, joystick_button=8),      # Usually Select/Back
         ]
+
+        # Load joystick button mappings from config if available
+        if self.config and hasattr(self.config, 'input') and self.config.input.joystick_buttons:
+            self.logger.info("Loading joystick button mappings from config")
+            for action_name, button_num in self.config.input.joystick_buttons.items():
+                try:
+                    action = InputAction(action_name.lower())
+                    self.input_bindings.append(
+                        InputBinding(action, joystick_button=button_num)
+                    )
+                    self.logger.debug(f"Mapped button {button_num} -> {action}")
+                except ValueError:
+                    self.logger.warning(f"Unknown action in config: {action_name}")
+        else:
+            # Default joystick bindings (if joystick available and no config)
+            self.logger.info("Using default joystick bindings")
+            self.input_bindings.extend([
+                # Navigation with D-pad
+                InputBinding(InputAction.WHEEL_LEFT, joystick_hat=0, joystick_hat_direction='left'),
+                InputBinding(InputAction.WHEEL_RIGHT, joystick_hat=0, joystick_hat_direction='right'),
+
+                # Navigation with analog stick
+                InputBinding(InputAction.WHEEL_LEFT, joystick_axis=0, joystick_axis_direction='negative'),
+                InputBinding(InputAction.WHEEL_RIGHT, joystick_axis=0, joystick_axis_direction='positive'),
+
+                # Buttons
+                InputBinding(InputAction.SELECT, joystick_button=0),  # Usually A/X button
+                InputBinding(InputAction.FLIPPERS, joystick_button=4),  # Usually L1/LB
+                InputBinding(InputAction.FLIPPERS, joystick_button=5),  # Usually R1/RB
+                InputBinding(InputAction.PLUNGER, joystick_button=2),   # Usually Y/Triangle
+                InputBinding(InputAction.START, joystick_button=9),     # Usually Start
+                InputBinding(InputAction.MENU, joystick_button=8),      # Usually Select/Back
+            ])
 
         self.logger.info(f"Configured {len(self.input_bindings)} input bindings")
 
