@@ -113,6 +113,44 @@ python run_pinballux.py
 - **R**: Rotate display 90° clockwise (useful for portrait/landscape orientation)
 - **Escape**: Exit PinballUX
 
+### Joystick/Controller Configuration
+
+PinballUX includes a joystick mapping utility that configures buttons for both the frontend navigation and Visual Pinball gameplay.
+
+#### Configuring Your Controller
+
+Run the joystick mapper:
+```bash
+python map_joystick.py
+```
+
+The mapper will guide you through configuring:
+
+**Frontend Controls:**
+- Navigate wheel left/right
+- Select table
+
+**Gameplay Controls (Visual Pinball):**
+- Left/Right flippers
+- Plunger
+- Start game
+- Add credit/Menu
+- Left/Right MagnaSave
+- Exit table
+
+Button mappings are saved to:
+- `~/.config/pinballux/config.json` (PinballUX frontend)
+- `~/.vpinball/VPinballX.ini` (Visual Pinball gameplay)
+
+#### Example Configuration Files
+
+The `example_configs/` directory contains reference files:
+
+- **example_configs/gamecontrollerdb.txt**: SDL2 controller database for improved controller recognition
+  - Copy to `~/.vpinball/gamecontrollerdb.txt` to help Visual Pinball correctly identify your controller
+
+- **example_configs/VPinballX.ini**: Example Visual Pinball configuration showing sample joystick button mappings (0-based indexing)
+
 ## Media Files
 
 PinballUX uses a structured media system where files must match the table name and be placed in the appropriate directory:
