@@ -71,9 +71,12 @@ pinballux/data/tables/**/*
 # VPinball data (ROM files)
 vpinball/
 
-# ROM zip files in root and roms directory
+# ROM files - ignore content but keep directory structure
+pinballux/data/roms/**/*
+!pinballux/data/roms/.gitkeep
+
+# ROM zip files in root
 /*.zip
-roms/
 
 # Test files
 test_*.py
