@@ -47,6 +47,77 @@ pip install -r requirements.txt
 
 5. Add your VPX table files to `pinballux/data/tables/`
 
+6. **Scan and index your tables** (required for first-time setup):
+```bash
+python scan_tables.py
+```
+
+This will:
+- Scan for all VPX table files in `pinballux/data/tables/`
+- Extract table metadata (name, manufacturer, year, etc.)
+- Find and link associated media files
+- Build the table database for the frontend
+- Report what was found
+
+## Table Management
+
+### Initial Setup
+
+After adding your VPX table files to `pinballux/data/tables/`, you **must** run the table scanner to build the database:
+
+```bash
+python scan_tables.py
+```
+
+The scanner will display a detailed report showing:
+- **New tables added** to the database
+- **Media files found** for each table (videos 🎬, images 🖼️, audio 🔊)
+- **Database statistics** (total tables, manufacturers, etc.)
+- **Complete table listing** grouped by manufacturer
+
+Example output:
+```
+📀 TABLE FILES:
+   Scanned:  22 files
+   New:      22 tables added
+   Updated:  0 tables updated
+
+🎬 MEDIA FILES:
+   Tables:   22 tables processed
+   Updated:  18 tables with media found
+
+📊 DATABASE STATISTICS:
+   Total Tables:    22
+   Manufacturers:   6
+```
+
+### Adding or Removing Tables
+
+Whenever you add new tables or remove existing ones, run the scanner again:
+
+```bash
+python scan_tables.py
+```
+
+The scanner automatically:
+- **Detects and adds new tables** to the database
+- **Updates existing tables** if files have changed
+- **Removes deleted tables** from the database
+- **Rescans media files** to find new videos, images, or audio
+
+### Media File Detection
+
+The scanner automatically finds media files that match your table names. For best results:
+
+1. Place media files in the appropriate directories (see Media Files section below)
+2. Name media files to **exactly match** the table name
+3. Run the scanner after adding new media files
+
+The scanner will show which tables have media with icons:
+- 🎬 Table has video media
+- 🖼️ Table has backglass/image media
+- 🔊 Table has audio media
+
 ## Ubuntu Display Configuration
 
 **IMPORTANT**: Before running PinballUX, you must configure your Ubuntu display settings correctly for multi-monitor support to work properly.
@@ -187,6 +258,58 @@ Media files must match the table name exactly. For example, for a table named "M
 - **Wheel image**: `My Favorite Table.png` → `pinballux/data/media/images/wheel/`
 - **Table audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/table/`
 - **Launch audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/launch/`
+
+### Importing Media Packs
+
+PinballUX includes a media pack importer that can automatically extract and match media files from Visual Pinball media pack ZIP files.
+
+#### Using the Media Pack Importer
+
+1. **Place media pack ZIP files** in the `pinballux/data/media/packs/` directory
+
+2. **Run the importer**:
+```bash
+python import_media_pack.py
+```
+
+3. **Review and confirm matches**: The importer will:
+   - Extract and locate the "Visual Pinball" directory inside the ZIP
+   - Find Backglass Images, Table Images, and Wheel Images subdirectories
+   - Match each file to tables in your database using fuzzy name matching
+   - Show you the best match with a confidence score
+   - Ask you to confirm (Y), skip (n), or skip all remaining (s) for each file
+
+4. **Update the database**: After importing, run the table scanner to update media references:
+```bash
+python scan_tables.py
+```
+
+#### Expected Media Pack Structure
+
+The ZIP file should contain a "Visual Pinball" directory (at any depth) with subdirectories like:
+- **Backglass Images/** or **Back Glass Images/**
+- **Table Images/** or **Playfield Images/**
+- **Wheel Images/** or **Logo Images/**
+
+The importer will automatically find these directories and extract matching image files (PNG, JPG, JPEG, GIF, BMP).
+
+#### Example Import Session
+
+```
+Processing: MyMediaPack.zip
+--------------------------------------------------------------------------------
+✓ Found Visual Pinball directory: Media/Visual Pinball/
+✓ Found media types: backglass, table, wheel
+
+TABLE IMAGES:
+----------------------------------------
+  Found 15 files
+
+  📄 The Goonies Never Say Die.png
+    Best match: The Goonies Never Say Die Pinball (VPW 2021) (85% confidence)
+    Import as The Goonies Never Say Die Pinball (VPW 2021)? [Y/n/s(kip all)]: y
+    ✓ Imported as: The Goonies Never Say Die Pinball (VPW 2021).png
+```
 
 ### Media Playback Priority
 
