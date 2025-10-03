@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-PinballUX - Launch Script
+PinballUX - Table Scanner
+Scans for VPX tables and media files, updates database
 """
 
 import sys
@@ -10,8 +11,8 @@ import os
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-# Import and run the main application
-from pinballux.src.main import main
+# Import and run the table manager
+from pinballux.src.database.table_manager import main
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
