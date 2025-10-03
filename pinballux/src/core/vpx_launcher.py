@@ -154,12 +154,15 @@ class VPXLauncher(QObject):
         if self.config.vpx.executable_path and os.path.exists(self.config.vpx.executable_path):
             return self.config.vpx.executable_path
 
+        # Get project root directory (PinballUX directory)
+        project_root = Path(__file__).parent.parent.parent.parent
+
         # Common locations to search
         search_paths = [
-            # Your specified VP executable location
-            "/home/keith/github/pinballUX/vpinball/VPinballX_GL",
-            # From our cloned VP repository
-            "/home/keith/github/vpinball/standalone/linux-x64/vpinball_standalone",
+            # Project-local VP executable
+            str(project_root / "vpinball" / "VPinballX_GL"),
+            # User's github directory
+            str(Path.home() / "github" / "vpinball" / "standalone" / "linux-x64" / "vpinball_standalone"),
             # System paths
             "/usr/local/bin/vpinball_standalone",
             "/usr/bin/vpinball_standalone",
