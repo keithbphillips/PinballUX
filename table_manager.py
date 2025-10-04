@@ -14,12 +14,13 @@ import json
 import base64
 import shutil
 from dataclasses import dataclass
+import zipfile
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
-    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy
+    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QMovie
@@ -793,6 +794,11 @@ class MainWindow(QMainWindow):
         self.stop_btn.setEnabled(False)
         table_layout.addWidget(self.stop_btn)
 
+        self.import_pack_btn = QPushButton("Import Media Pack")
+        self.import_pack_btn.clicked.connect(self.import_media_pack)
+        self.import_pack_btn.setEnabled(False)
+        table_layout.addWidget(self.import_pack_btn)
+
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
 
@@ -856,6 +862,7 @@ class MainWindow(QMainWindow):
             self.selected_table = dialog.selected_table
             self.selected_table_label.setText(self.selected_table.name)
             self.download_btn.setEnabled(True)
+            self.import_pack_btn.setEnabled(True)
             self.log(f"Selected table: {self.selected_table.name}")
 
     def start_download(self):
@@ -977,6 +984,157 @@ class MainWindow(QMainWindow):
             self.log(f"✗ Error scanning tables: {e}")
             self.status_label.setText("✗ Scan failed")
             QMessageBox.warning(self, "Scan Error", f"Error scanning tables:\n{e}")
+
+    def import_media_pack(self):
+        """Import a media pack from a zip file"""
+        if not self.selected_table:
+            QMessageBox.warning(self, "Error", "Please select a table first")
+            return
+
+        # Default to the media packs directory
+        packs_dir = Path(project_root) / "pinballux" / "data" / "media" / "packs"
+        packs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Open file dialog to select zip file
+        zip_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "Select Media Pack",
+            str(packs_dir),
+            "Zip Files (*.zip)"
+        )
+
+        if not zip_path:
+            return  # User cancelled
+
+        try:
+            self.log(f"Importing media pack: {Path(zip_path).name}")
+            self.status_label.setText("Importing media pack...")
+
+            # Map HyperPin/PinballX media directories to PinballUX media types
+            media_dir_mapping = {
+                'Backglass Images': ('backglass', 'images'),
+                'Backglass Videos': ('backglass', 'videos'),
+                'Table Images': ('table', 'images'),
+                'Table Videos': ('table', 'videos'),
+                'table video': ('table', 'videos'),
+                'Wheel Images': ('wheel', 'images'),
+                'DMD Images': ('dmd', 'images'),
+                'DMD Videos': ('dmd', 'videos'),
+                'DMD Color Videos': ('dmd', 'videos'),
+                'FullDMD Videos': ('dmd', 'videos'),
+                'Real DMD Images': ('dmd', 'images'),
+                'Real DMD Videos': ('dmd', 'videos'),
+                'Real DMD Color Images': ('dmd', 'images'),
+                'Real DMD Color Videos': ('dmd', 'videos'),
+                'Topper Images': ('topper', 'images'),
+                'Topper Videos': ('topper', 'videos'),
+                'Launch Audio': ('launch_audio', 'audio'),
+                'Table Audio': ('table_audio', 'audio'),
+            }
+
+            imported_files = []
+            base_media_path = Path(project_root) / "pinballux" / "data" / "media"
+
+            with zipfile.ZipFile(zip_path, 'r') as zip_file:
+                for file_info in zip_file.filelist:
+                    # Skip directories
+                    if file_info.is_dir():
+                        continue
+
+                    # Parse the path to find media type
+                    parts = Path(file_info.filename).parts
+
+                    # Find media directory in path (e.g., "Backglass Images", "Table Videos")
+                    media_dir = None
+                    for part in parts:
+                        if part in media_dir_mapping:
+                            media_dir = part
+                            break
+
+                    if not media_dir:
+                        continue  # Skip files not in known media directories
+
+                    media_type, file_category = media_dir_mapping[media_dir]
+
+                    # Extract filename
+                    filename = Path(file_info.filename).name
+
+                    # Rename file to use the selected table name
+                    ext = Path(filename).suffix
+                    new_filename = f"{self.selected_table.name}{ext}"
+
+                    # Determine destination path based on media type and category
+                    if media_type == 'launch_audio':
+                        dest_path = base_media_path / "audio" / "launch" / new_filename
+                    elif media_type == 'table_audio':
+                        dest_path = base_media_path / "audio" / "table" / new_filename
+                    elif media_type == 'backglass':
+                        dest_path = base_media_path / file_category / "backglass" / new_filename
+                    elif media_type == 'table':
+                        dest_path = base_media_path / file_category / "table" / new_filename
+                    elif media_type == 'dmd':
+                        # For DMD videos, use real_dmd_color subdirectory
+                        if file_category == 'videos':
+                            dest_path = base_media_path / "videos" / "real_dmd_color" / new_filename
+                        else:
+                            dest_path = base_media_path / "images" / "dmd" / new_filename
+                    elif media_type == 'topper':
+                        dest_path = base_media_path / file_category / "topper" / new_filename
+                    elif media_type == 'wheel':
+                        dest_path = base_media_path / "images" / "wheel" / new_filename
+                    else:
+                        continue
+
+                    # Create directory if needed
+                    dest_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Check if file exists and ask for confirmation
+                    if dest_path.exists():
+                        reply = QMessageBox.question(
+                            self,
+                            "File Exists",
+                            f"File already exists:\n{dest_path}\n\nOverwrite?",
+                            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+                        )
+
+                        if reply == QMessageBox.StandardButton.Cancel:
+                            self.log("Import cancelled by user")
+                            return
+                        elif reply == QMessageBox.StandardButton.No:
+                            continue  # Skip this file
+
+                    # Extract and save the file
+                    with zip_file.open(file_info.filename) as source:
+                        with open(dest_path, 'wb') as target:
+                            shutil.copyfileobj(source, target)
+
+                    imported_files.append((media_type, dest_path))
+                    self.log(f"✓ Imported: [{media_type}] {dest_path.name}")
+
+            # Show summary
+            if imported_files:
+                self.status_label.setText(f"✓ Imported {len(imported_files)} files")
+                self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+
+                summary = f"Successfully imported {len(imported_files)} files:\n\n"
+                media_counts = {}
+                for media_type, _ in imported_files:
+                    media_counts[media_type] = media_counts.get(media_type, 0) + 1
+
+                for media_type, count in sorted(media_counts.items()):
+                    summary += f"  • {media_type}: {count} file(s)\n"
+
+                QMessageBox.information(self, "Import Complete", summary)
+                self.log(f"✓ Media pack import complete: {len(imported_files)} files")
+            else:
+                self.status_label.setText("No matching media files found in pack")
+                QMessageBox.warning(self, "Import Complete", "No matching media files found in the selected pack")
+
+        except Exception as e:
+            self.log(f"✗ Error importing media pack: {e}")
+            self.status_label.setText("✗ Import failed")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
+            QMessageBox.critical(self, "Import Error", f"Error importing media pack:\n{e}")
 
     def closeEvent(self, event):
         """Handle window close event"""

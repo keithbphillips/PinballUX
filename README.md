@@ -97,6 +97,29 @@ The Table Manager can download media files (backglass, DMD, table videos/images,
 6. **Save Files**: Click "Save" to copy the downloaded file to your PinballUX media directory
 7. **Delete Cached Files**: Click "Delete All" to remove all cached downloads for the current table
 
+### Importing Media Packs
+
+The Table Manager can import media from HyperPin/PinballX media pack ZIP files:
+
+1. **Select Table**: Click "Select Table..." to choose a table from your database
+2. **Import Pack**: Click "Import Media Pack" button
+3. **Choose ZIP File**: Select a media pack ZIP file from `pinballux/data/media/packs/` directory
+4. **Automatic Extraction**: The importer will:
+   - Extract media files from the ZIP
+   - Map HyperPin/PinballX directories to PinballUX structure
+   - Automatically rename files to match your selected table
+   - Prompt before overwriting existing files
+5. **View Summary**: See a summary of imported files by media type
+
+Supported media pack directories:
+- Backglass Images/Videos → `images/backglass/` or `videos/backglass/`
+- Table Images/Videos → `images/table/` or `videos/table/`
+- Wheel Images → `images/wheel/`
+- DMD Images/Videos → `images/dmd/` or `videos/real_dmd_color/`
+- Topper Images/Videos → `images/topper/` or `videos/topper/`
+- Launch Audio → `audio/launch/`
+- Table Audio → `audio/table/`
+
 ### Features
 
 - **FTP Credential Storage**: Credentials are saved (base64 encoded) in `~/.config/pinballux/ftp_credentials.json`
@@ -107,6 +130,7 @@ The Table Manager can download media files (backglass, DMD, table videos/images,
 - **Side-by-Side Preview**: View downloaded and existing media simultaneously before saving
 - **Overwrite Protection**: Prompts before overwriting existing files
 - **Progress Indicators**: Real-time download status and progress tracking
+- **Media Pack Import**: Import HyperPin/PinballX media packs with automatic file mapping and renaming
 
 ## Ubuntu Display Configuration
 
@@ -248,58 +272,6 @@ Media files must match the table name exactly. For example, for a table named "M
 - **Wheel image**: `My Favorite Table.png` → `pinballux/data/media/images/wheel/`
 - **Table audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/table/`
 - **Launch audio**: `My Favorite Table.mp3` → `pinballux/data/media/audio/launch/`
-
-### Importing Media Packs
-
-PinballUX includes a media pack importer that can automatically extract and match media files from Visual Pinball media pack ZIP files.
-
-#### Using the Media Pack Importer
-
-1. **Place media pack ZIP files** in the `pinballux/data/media/packs/` directory
-
-2. **Run the importer**:
-```bash
-python import_media_pack.py
-```
-
-3. **Review and confirm matches**: The importer will:
-   - Extract and locate the "Visual Pinball" directory inside the ZIP
-   - Find Backglass Images, Table Images, and Wheel Images subdirectories
-   - Match each file to tables in your database using fuzzy name matching
-   - Show you the best match with a confidence score
-   - Ask you to confirm (Y), skip (n), or skip all remaining (s) for each file
-
-4. **Update the database**: After importing, run the table scanner to update media references:
-```bash
-python scan_tables.py
-```
-
-#### Expected Media Pack Structure
-
-The ZIP file should contain a "Visual Pinball" directory (at any depth) with subdirectories like:
-- **Backglass Images/** or **Back Glass Images/**
-- **Table Images/** or **Playfield Images/**
-- **Wheel Images/** or **Logo Images/**
-
-The importer will automatically find these directories and extract matching image files (PNG, JPG, JPEG, GIF, BMP).
-
-#### Example Import Session
-
-```
-Processing: MyMediaPack.zip
---------------------------------------------------------------------------------
-✓ Found Visual Pinball directory: Media/Visual Pinball/
-✓ Found media types: backglass, table, wheel
-
-TABLE IMAGES:
-----------------------------------------
-  Found 15 files
-
-  📄 The Goonies Never Say Die.png
-    Best match: The Goonies Never Say Die Pinball (VPW 2021) (85% confidence)
-    Import as The Goonies Never Say Die Pinball (VPW 2021)? [Y/n/s(kip all)]: y
-    ✓ Imported as: The Goonies Never Say Die Pinball (VPW 2021).png
-```
 
 ### Media Playback Priority
 
