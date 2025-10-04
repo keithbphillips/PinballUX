@@ -62,17 +62,7 @@ pip install -r requirements.txt
 
 6. Add your VPX table files to `pinballux/data/tables/`
 
-7. **Scan and index your tables** (required for first-time setup):
-```bash
-python scan_tables.py
-```
-
-This will:
-- Scan for all VPX table files in `pinballux/data/tables/`
-- Extract table metadata (name, manufacturer, year, etc.)
-- Find and link associated media files
-- Build the table database for the frontend
-- Report what was found
+7. **Scan and index your tables** - See the [Table Management](#table-management) section below for details on running `scan_tables.py`
 
 ## Table Management
 
