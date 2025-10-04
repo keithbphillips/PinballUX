@@ -68,6 +68,8 @@ pip install -r requirements.txt
 
 The Table Manager is a PyQt6 GUI application that handles table scanning, media management, and FTP downloads from ftp.gameex.com.
 
+![Table Manager](docs/Table_Manager.png)
+
 ### Running Table Manager
 
 ```bash

@@ -173,12 +173,8 @@ class FTPDownloadThread(QThread):
                     for filename in files:
                         score = match_file_to_table(filename, self.table)
 
-                        # Check for substring match
-                        file_title = Path(filename).stem.split('(')[0].strip().lower()
-                        table_title = self.table.name.split('(')[0].strip().lower()
-                        is_substring_match = table_title in file_title or file_title in table_title
-
-                        if score >= 0.90 or is_substring_match:
+                        # Only download files with high similarity (90%+)
+                        if score >= 0.90:
                             # Download to temp directory with media type structure
                             media_type_dir = self.temp_dir / media_type
                             media_type_dir.mkdir(exist_ok=True)
