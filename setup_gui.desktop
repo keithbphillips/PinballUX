@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PinballUX Setup
+Comment=Configure PinballUX displays, input, and VPX settings
+Exec=/home/keith/PinballUX/.venv/bin/python /home/keith/PinballUX/setup_gui.py
+Icon=preferences-system
+Terminal=false
+Categories=Settings;

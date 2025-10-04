@@ -62,7 +62,66 @@ pip install -r requirements.txt
 
 6. Add your VPX table files to `pinballux/data/tables/`
 
-7. **Run Table Manager** - See the [Table Manager](#table-manager) section below for details
+7. **Configure PinballUX** - Run the Setup GUI to configure displays, input, and VPX paths:
+```bash
+python setup_gui.py
+```
+
+See the [Setup GUI](#setup-gui) section below for details.
+
+8. **Run Table Manager** - Scan tables and download media:
+```bash
+python table_manager.py
+```
+
+See the [Table Manager](#table-manager) section below for details.
+
+## Setup GUI
+
+The Setup GUI provides a user-friendly interface for configuring all aspects of PinballUX.
+
+### Running Setup GUI
+
+```bash
+python setup_gui.py
+```
+
+### Configuration Tabs
+
+**Displays Tab**
+- Configure each display type (Playfield, Backglass, DMD, FullDMD, Topper)
+- Set screen numbers for multi-monitor setups
+- Choose rotation (0°, 90°, 180°, 270°)
+- Select DMD mode (Full Screen or Native Size)
+- Enable/disable individual displays
+
+**Visual Pinball Tab**
+- Set Visual Pinball executable path
+- Configure table directory
+- Configure media directory
+
+**Keyboard Tab**
+- Map keyboard keys for navigation
+- Configure Exit, Select, Up, Down, Left, Right actions
+- Click buttons and press keys to capture input
+
+**Joystick Tab**
+- Enable/disable joystick input
+- Map joystick buttons for frontend navigation
+- Map gameplay buttons (flippers, plunger, start, menu, MagnaSave, exit)
+- Automatically detects connected joysticks
+- Click buttons and press joystick buttons to capture input
+
+**Audio Tab**
+- Enable/disable table audio playback during navigation
+
+### Features
+
+- **Live Key/Button Capture**: Click any button and press the desired key or joystick button to map it
+- **Joystick Detection**: Automatically detects and displays connected joystick information
+- **Path Browsing**: Browse for VPX executable and directories with file dialogs
+- **Config Validation**: Validates settings before saving
+- **Single Config File**: All settings saved to `~/.config/pinballux/config.json`
 
 ## Table Manager
 
