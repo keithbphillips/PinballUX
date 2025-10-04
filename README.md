@@ -22,32 +22,45 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 
 ## Installation
 
-1. Clone the repository:
+1. Install required system libraries:
+```bash
+sudo apt install libxcb-cursor0
+```
+
+2. Clone the repository:
 ```bash
 git clone https://github.com/keithbphillips/PinballUX.git
 cd PinballUX
 ```
 
-2. Install Visual Pinball Standalone for Linux:
+3. Install Visual Pinball Standalone for Linux:
    - Download Visual Pinball Standalone for Linux from [GitHub Releases](https://github.com/vpinball/vpinball/releases)
-   - Extract the VPinball directory into the PinballUX root directory as `vpinball/`
+   - Extract the VPinball files into the PinballUX root directory:
+   ```bash
+   mkdir vpinball
+   cd vpinball
+   unzip /path/to/VPinballX_GL-*.zip
+   tar -xvzf VPinballX_GL-*.tar.gz
+   cd ..
+   ```
    - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
-   - Place ROM files in `PinballUX/roms/` directory
+   - Place ROM files in `PinballUX/pinballux/data/roms/` directory
 
-3. Set up Python virtual environment:
+4. Set up Python virtual environment:
 ```bash
-python -m venv .venv
+sudo apt install python3.12-venv
+python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-4. Install Python dependencies:
+5. Install Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-5. Add your VPX table files to `pinballux/data/tables/`
+6. Add your VPX table files to `pinballux/data/tables/`
 
-6. **Scan and index your tables** (required for first-time setup):
+7. **Scan and index your tables** (required for first-time setup):
 ```bash
 python scan_tables.py
 ```
