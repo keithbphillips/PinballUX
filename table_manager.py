@@ -19,7 +19,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
-    QListWidget, QListWidgetItem, QDialogButtonBox
+    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
 from PyQt6.QtGui import QPixmap, QMovie
@@ -338,27 +338,32 @@ class MediaReviewWidget(QWidget):
 
         # Buttons at top
         button_layout = QHBoxLayout()
-        self.save_all_btn = QPushButton("Save All")
-        self.save_all_btn.clicked.connect(self.save_all)
+        self.save_btn = QPushButton("Save")
+        self.save_btn.clicked.connect(self.save_current)
+        self.save_btn.setEnabled(False)
         self.delete_all_btn = QPushButton("Delete All")
         self.delete_all_btn.clicked.connect(self.delete_all)
-        button_layout.addWidget(self.save_all_btn)
+        button_layout.addWidget(self.save_btn)
         button_layout.addWidget(self.delete_all_btn)
         left_panel.addLayout(button_layout)
 
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderLabel("Downloaded Files")
         self.file_tree.itemClicked.connect(self.on_file_selected)
+        self.file_tree.header().setStretchLastSection(True)
+        self.file_tree.setColumnCount(1)
         left_panel.addWidget(self.file_tree)
 
         # Middle panel - Downloaded file preview
         middle_panel = QVBoxLayout()
         middle_panel.setSpacing(0)
         middle_title = QLabel("Downloaded File Preview")
-        middle_title.setContentsMargins(0, 0, 0, 0)
+        middle_title.setFixedHeight(20)
         middle_panel.addWidget(middle_title)
 
         self.downloaded_preview = QWidget()
+        self.downloaded_preview.setMinimumHeight(400)
+        self.downloaded_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.downloaded_preview_layout = QVBoxLayout()
         self.downloaded_preview_layout.setContentsMargins(0, 0, 0, 0)
         self.downloaded_preview_layout.setSpacing(0)
@@ -366,7 +371,6 @@ class MediaReviewWidget(QWidget):
 
         self.downloaded_image_label = QLabel("Select a file to preview")
         self.downloaded_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.downloaded_image_label.setContentsMargins(0, -25, 0, 0)  # Negative top margin to shift up
         self.downloaded_image_label.setMinimumSize(400, 400)
         self.downloaded_image_label.setScaledContents(False)
         self.downloaded_image_label.mousePressEvent = lambda e: self.play_downloaded_media()
@@ -383,24 +387,16 @@ class MediaReviewWidget(QWidget):
 
         middle_panel.addWidget(self.downloaded_preview)
 
-        # Action buttons
-        action_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Save")
-        self.save_btn.clicked.connect(self.save_current)
-        self.save_btn.setEnabled(False)
-
-        action_layout.addWidget(self.save_btn)
-        action_layout.addStretch()
-        middle_panel.addLayout(action_layout)
-
         # Right panel - Existing file preview
         right_panel = QVBoxLayout()
         right_panel.setSpacing(0)
         right_title = QLabel("Existing PinballUX File (if any)")
-        right_title.setContentsMargins(0, -25, 0, 0)  # Negative top margin to shift up
+        right_title.setFixedHeight(20)
         right_panel.addWidget(right_title)
 
         self.existing_preview = QWidget()
+        self.existing_preview.setMinimumHeight(400)
+        self.existing_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self.existing_preview_layout = QVBoxLayout()
         self.existing_preview_layout.setContentsMargins(0, 0, 0, 0)
         self.existing_preview_layout.setSpacing(0)
@@ -408,7 +404,6 @@ class MediaReviewWidget(QWidget):
 
         self.existing_image_label = QLabel("No existing file")
         self.existing_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.existing_image_label.setContentsMargins(0, -25, 0, 0)  # Negative top margin to shift up
         self.existing_image_label.setMinimumSize(400, 400)
         self.existing_image_label.setScaledContents(False)
         self.existing_image_label.mousePressEvent = lambda e: self.play_existing_media()
@@ -427,11 +422,6 @@ class MediaReviewWidget(QWidget):
         self.existing_preview_layout.addWidget(self.existing_video_widget)
 
         right_panel.addWidget(self.existing_preview)
-
-        # Add spacer to match the action buttons height in middle panel
-        spacer_layout = QHBoxLayout()
-        spacer_layout.addStretch()
-        right_panel.addLayout(spacer_layout)
 
         # Add panels to splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -502,9 +492,23 @@ class MediaReviewWidget(QWidget):
             type_item.setExpanded(True)
 
             for file in files:
+                # Get file type icon
+                ext = file.temp_path.suffix.lower()
+                if ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
+                    type_icon = "🎬"
+                elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
+                    type_icon = "🖼️"
+                elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
+                    type_icon = "🔊"
+                else:
+                    type_icon = "📄"
+
                 status_icon = "✓" if file.status == "saved" else "✗" if file.status == "skipped" else "○"
-                file_item = QTreeWidgetItem(type_item, [f"{status_icon} {file.ftp_filename}"])
+                file_item = QTreeWidgetItem(type_item, [f"{status_icon} {type_icon} {file.ftp_filename}"])
                 file_item.setData(0, Qt.ItemDataRole.UserRole, file)
+
+        # Resize column to fit content
+        self.file_tree.resizeColumnToContents(0)
 
     def on_file_selected(self, item: QTreeWidgetItem, column: int):
         """Handle file selection"""
@@ -541,7 +545,7 @@ class MediaReviewWidget(QWidget):
             self.downloaded_image_label.show()
             pixmap = QPixmap(str(file.temp_path))
             # Scale to a fixed reasonable size
-            scaled_pixmap = pixmap.scaled(600, 600,
+            scaled_pixmap = pixmap.scaled(400, 400,
                                           Qt.AspectRatioMode.KeepAspectRatio,
                                           Qt.TransformationMode.SmoothTransformation)
             self.downloaded_image_label.setPixmap(scaled_pixmap)
@@ -554,6 +558,8 @@ class MediaReviewWidget(QWidget):
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
         """Find existing file of the same media type, regardless of extension"""
+        base_path = Path(project_root) / "pinballux" / "data" / "media"
+
         # Define extension groups by media type
         video_exts = {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
         image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}
@@ -570,12 +576,26 @@ class MediaReviewWidget(QWidget):
         else:
             search_exts = {downloaded_ext}
 
-        # Search for any matching file with the table name
-        for ext in search_exts:
-            local_filename = f"{file.table_name}{ext}"
-            local_path = get_local_media_path(file.media_type, local_filename)
-            if local_path.exists():
-                return local_path
+        # For DMD files, check all DMD directories
+        if file.media_type == 'dmd':
+            if downloaded_ext in video_exts:
+                dmd_dirs = ['videos/dmd', 'videos/fulldmd', 'videos/real_dmd', 'videos/real_dmd_color']
+            else:
+                dmd_dirs = ['images/dmd', 'images/real_dmd']
+
+            for dmd_dir in dmd_dirs:
+                for ext in search_exts:
+                    local_filename = f"{file.table_name}{ext}"
+                    local_path = base_path / dmd_dir / local_filename
+                    if local_path.exists():
+                        return local_path
+        else:
+            # Search for any matching file with the table name
+            for ext in search_exts:
+                local_filename = f"{file.table_name}{ext}"
+                local_path = get_local_media_path(file.media_type, local_filename)
+                if local_path.exists():
+                    return local_path
 
         return None
 
@@ -598,7 +618,7 @@ class MediaReviewWidget(QWidget):
                 self.existing_image_label.show()
                 pixmap = QPixmap(str(local_path))
                 # Scale to a fixed reasonable size
-                scaled_pixmap = pixmap.scaled(600, 600,
+                scaled_pixmap = pixmap.scaled(400, 400,
                                               Qt.AspectRatioMode.KeepAspectRatio,
                                               Qt.TransformationMode.SmoothTransformation)
                 self.existing_image_label.setPixmap(scaled_pixmap)
@@ -675,36 +695,31 @@ class MediaReviewWidget(QWidget):
 
         QMessageBox.information(self, "Saved", f"File saved to:\n{local_path}")
 
-    def save_all(self):
-        """Save all pending files"""
-        saved_count = 0
-        for file in self.files:
-            if file.status == "pending":
-                local_filename = f"{file.table_name}{file.temp_path.suffix}"
-                local_path = get_local_media_path(file.media_type, local_filename)
-                local_path.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(file.temp_path, local_path)
-                file.status = "saved"
-                saved_count += 1
-
-        self.update_file_tree()
-        QMessageBox.information(self, "Saved", f"Saved {saved_count} files")
-
     def delete_all(self):
-        """Delete all pending files"""
+        """Delete all cached files for the current table"""
         reply = QMessageBox.question(self, "Confirm Delete",
-                                     "Delete all pending files?",
+                                     "Delete all cached files for this table?",
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
 
         if reply == QMessageBox.StandardButton.Yes:
             deleted_count = 0
             for file in self.files:
-                if file.status == "pending":
-                    file.status = "skipped"
+                if file.temp_path.exists():
+                    file.temp_path.unlink()
                     deleted_count += 1
 
+            # Clear the files list and update UI
+            self.files = []
             self.update_file_tree()
-            QMessageBox.information(self, "Deleted", f"Deleted {deleted_count} files")
+            self.downloaded_image_label.setText("Select a file to preview")
+            self.downloaded_image_label.show()
+            self.downloaded_video_widget.hide()
+            self.existing_image_label.setText("No existing file")
+            self.existing_image_label.show()
+            self.existing_video_widget.hide()
+            self.save_btn.setEnabled(False)
+
+            QMessageBox.information(self, "Deleted", f"Deleted {deleted_count} cached files")
 
 
 class MainWindow(QMainWindow):
@@ -924,16 +939,8 @@ class MainWindow(QMainWindow):
         self.progress_text.append(message)
 
     def scan_tables_on_startup(self):
-        """Offer to scan tables on startup"""
-        reply = QMessageBox.question(
-            self,
-            "Scan Tables",
-            "Would you like to scan for new tables and update media links?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.run_table_scan()
+        """Scan tables on startup"""
+        self.run_table_scan()
 
     def scan_tables_on_exit(self):
         """Offer to scan tables before exit"""

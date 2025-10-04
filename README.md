@@ -62,66 +62,49 @@ pip install -r requirements.txt
 
 6. Add your VPX table files to `pinballux/data/tables/`
 
-7. **Scan and index your tables** - See the [Table Management](#table-management) section below for details on running `scan_tables.py`
+7. **Run Table Manager** - See the [Table Manager](#table-manager) section below for details
 
-## Table Management
+## Table Manager
 
-### Initial Setup
+The Table Manager is a PyQt6 GUI application that handles table scanning, media management, and FTP downloads from ftp.gameex.com.
 
-After adding your VPX table files to `pinballux/data/tables/`, you **must** run the table scanner to build the database:
-
-```bash
-python scan_tables.py
-```
-
-The scanner will display a detailed report showing:
-- **New tables added** to the database
-- **Media files found** for each table (videos 🎬, images 🖼️, audio 🔊)
-- **Database statistics** (total tables, manufacturers, etc.)
-- **Complete table listing** grouped by manufacturer
-
-Example output:
-```
-📀 TABLE FILES:
-   Scanned:  22 files
-   New:      22 tables added
-   Updated:  0 tables updated
-
-🎬 MEDIA FILES:
-   Tables:   22 tables processed
-   Updated:  18 tables with media found
-
-📊 DATABASE STATISTICS:
-   Total Tables:    22
-   Manufacturers:   6
-```
-
-### Adding or Removing Tables
-
-Whenever you add new tables or remove existing ones, run the scanner again:
+### Running Table Manager
 
 ```bash
-python scan_tables.py
+python table_manager.py
 ```
 
-The scanner automatically:
-- **Detects and adds new tables** to the database
-- **Updates existing tables** if files have changed
-- **Removes deleted tables** from the database
-- **Rescans media files** to find new videos, images, or audio
+On startup, the Table Manager will automatically:
+- Scan for new VPX table files in `pinballux/data/tables/`
+- Update the database with any changes
+- Scan for media files
+- Display a completion popup
 
-### Media File Detection
+### Downloading Media from FTP
 
-The scanner automatically finds media files that match your table names. For best results:
+The Table Manager can download media files (backglass, DMD, table videos/images, wheel images, and audio) from ftp.gameex.com:
 
-1. Place media files in the appropriate directories (see Media Files section below)
-2. Name media files to **exactly match** the table name
-3. Run the scanner after adding new media files
+1. **Select Table**: Click "Select Table..." to choose a table from your database
+2. **Enter Credentials**: On first use, you'll be prompted for FTP credentials (saved for future sessions)
+3. **Download Media**: Click "Download Media" to fetch all available media for the selected table
+4. **Review Downloads**: Downloaded files appear in the left panel, organized by media type with icons:
+   - 🎬 Video files
+   - 🖼️ Image files
+   - 🔊 Audio files
+5. **Preview & Compare**: Click any downloaded file to preview it side-by-side with your existing PinballUX media (if any)
+6. **Save Files**: Click "Save" to copy the downloaded file to your PinballUX media directory
+7. **Delete Cached Files**: Click "Delete All" to remove all cached downloads for the current table
 
-The scanner will show which tables have media with icons:
-- 🎬 Table has video media
-- 🖼️ Table has backglass/image media
-- 🔊 Table has audio media
+### Features
+
+- **FTP Credential Storage**: Credentials are saved (base64 encoded) in `~/.config/pinballux/ftp_credentials.json`
+- **Temp Directory Caching**: Downloaded files are cached in `ftp_downloads_temp/` to avoid re-downloading
+- **Fuzzy Table Matching**: Automatically matches FTP files to your tables using 90% similarity threshold
+- **Cross-Extension Detection**: Compares files by media type (e.g., shows existing .mp4 when downloading .f4v)
+- **Multi-Directory DMD Support**: Checks all DMD directories (dmd, fulldmd, real_dmd, real_dmd_color)
+- **Side-by-Side Preview**: View downloaded and existing media simultaneously before saving
+- **Overwrite Protection**: Prompts before overwriting existing files
+- **Progress Indicators**: Real-time download status and progress tracking
 
 ## Ubuntu Display Configuration
 
