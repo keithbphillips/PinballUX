@@ -26,6 +26,242 @@ from pinballux.src.core.config import Config, MonitorConfig
 import pygame
 import shutil
 from datetime import datetime
+import configparser
+
+
+class VPXIniManager:
+    """Manager for reading/writing VPinballX.ini files"""
+
+    def __init__(self, ini_path: Optional[Path] = None):
+        """Initialize with optional custom ini path"""
+        if ini_path is None:
+            # Default VPX path
+            ini_path = Path.home() / ".vpinball" / "VPinballX.ini"
+        self.ini_path = Path(ini_path)
+
+    def read_display_config(self, display_type: str) -> Dict[str, any]:
+        """Read display configuration from VPinballX.ini"""
+        if not self.ini_path.exists():
+            return {}
+
+        try:
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
+
+            config = {}
+
+            # Map display types to VPX ini keys
+            key_mapping = {
+                'playfield': {
+                    'x': 'WindowPosX',
+                    'y': 'WindowPosY',
+                    'width': 'Width',
+                    'height': 'Height'
+                },
+                'backglass': {
+                    'x': 'B2SBackglassX',
+                    'y': 'B2SBackglassY',
+                    'width': 'B2SBackglassWidth',
+                    'height': 'B2SBackglassHeight',
+                    'rotation': 'B2SBackglassRotation'
+                },
+                'dmd': {
+                    'x': 'PinMAMEWindowX',
+                    'y': 'PinMAMEWindowY',
+                    'width': 'PinMAMEWindowWidth',
+                    'height': 'PinMAMEWindowHeight',
+                    'rotation': 'PinMAMEWindowRotation'
+                },
+                'fulldmd': {
+                    'x': 'FlexDMDWindowX',
+                    'y': 'FlexDMDWindowY',
+                    'width': 'FlexDMDWindowWidth',
+                    'height': 'FlexDMDWindowHeight',
+                    'rotation': 'FlexDMDWindowRotation'
+                },
+                'b2sdmd': {
+                    'x': 'B2SDMDX',
+                    'y': 'B2SDMDY',
+                    'width': 'B2SDMDWidth',
+                    'height': 'B2SDMDHeight',
+                    'rotation': 'B2SDMDRotation'
+                }
+            }
+
+            if display_type not in key_mapping:
+                return {}
+
+            keys = key_mapping[display_type]
+
+            # Parse the file line by line
+            for line in lines:
+                line = line.strip()
+                if '=' in line and not line.startswith(';'):
+                    key_part = line.split('=')[0].strip()
+                    value_part = line.split('=', 1)[1].strip()
+
+                    for config_key, ini_key in keys.items():
+                        if key_part == ini_key and value_part:
+                            try:
+                                config[config_key] = int(value_part)
+                            except ValueError:
+                                config[config_key] = value_part
+
+            return config
+
+        except Exception as e:
+            print(f"Error reading VPinballX.ini: {e}")
+            return {}
+
+    def write_display_config(self, display_type: str, config: Dict[str, any]) -> bool:
+        """Write display configuration to VPinballX.ini"""
+        if not self.ini_path.exists():
+            return False
+
+        # Map display types to VPX ini keys
+        key_mapping = {
+            'playfield': {
+                'x': 'WindowPosX',
+                'y': 'WindowPosY',
+                'width': 'Width',
+                'height': 'Height'
+            },
+            'backglass': {
+                'x': 'B2SBackglassX',
+                'y': 'B2SBackglassY',
+                'width': 'B2SBackglassWidth',
+                'height': 'B2SBackglassHeight',
+                'rotation': 'B2SBackglassRotation'
+            },
+            'dmd': {
+                'x': 'PinMAMEWindowX',
+                'y': 'PinMAMEWindowY',
+                'width': 'PinMAMEWindowWidth',
+                'height': 'PinMAMEWindowHeight',
+                'rotation': 'PinMAMEWindowRotation'
+            },
+            'fulldmd': {
+                'x': 'FlexDMDWindowX',
+                'y': 'FlexDMDWindowY',
+                'width': 'FlexDMDWindowWidth',
+                'height': 'FlexDMDWindowHeight',
+                'rotation': 'FlexDMDWindowRotation'
+            },
+            'b2sdmd': {
+                'x': 'B2SDMDX',
+                'y': 'B2SDMDY',
+                'width': 'B2SDMDWidth',
+                'height': 'B2SDMDHeight',
+                'rotation': 'B2SDMDRotation'
+            }
+        }
+
+        if display_type not in key_mapping:
+            return False
+
+        try:
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.ini_path.parent / f"VPinballX.ini.backup_{timestamp}"
+            shutil.copy2(self.ini_path, backup_path)
+
+            # Read the file
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
+
+            keys = key_mapping[display_type]
+            updated_keys = set()
+
+            # Update existing lines
+            for i, line in enumerate(lines):
+                line_stripped = line.strip()
+                if '=' in line_stripped and not line_stripped.startswith(';'):
+                    key_part = line_stripped.split('=')[0].strip()
+
+                    for config_key, ini_key in keys.items():
+                        if key_part == ini_key and config_key in config:
+                            value = config[config_key]
+                            if value is not None and str(value).strip():
+                                lines[i] = f"{ini_key} = {value}\n"
+                                updated_keys.add(ini_key)
+                            break
+
+            # Add missing keys to [Standalone] section
+            missing_keys = set(keys.values()) - updated_keys
+            if missing_keys:
+                # Find [Standalone] section
+                standalone_idx = None
+                next_section_idx = None
+
+                for i, line in enumerate(lines):
+                    if line.strip() == '[Standalone]':
+                        standalone_idx = i
+                    elif standalone_idx is not None and line.strip().startswith('['):
+                        next_section_idx = i
+                        break
+
+                if standalone_idx is not None:
+                    insert_idx = next_section_idx if next_section_idx else len(lines)
+
+                    for config_key, ini_key in keys.items():
+                        if ini_key in missing_keys and config_key in config:
+                            value = config[config_key]
+                            if value is not None and str(value).strip():
+                                lines.insert(insert_idx, f"{ini_key} = {value}\n")
+
+            # Write back
+            with open(self.ini_path, 'w') as f:
+                f.writelines(lines)
+
+            return True
+
+        except Exception as e:
+            print(f"Error writing VPinballX.ini: {e}")
+            return False
+
+    def read_joystick_config(self) -> Dict[str, int]:
+        """Read joystick button mappings from VPinballX.ini"""
+        if not self.ini_path.exists():
+            return {}
+
+        try:
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
+
+            # Map VPX ini keys to PinballUX actions
+            vpx_to_ux_mapping = {
+                'JoyLFlipKey': 'LEFT_FLIPPER',
+                'JoyRFlipKey': 'RIGHT_FLIPPER',
+                'JoyPlungerKey': 'PLUNGER',
+                'JoyStartGameKey': 'START',
+                'JoyAddCreditKey': 'MENU',
+                'JoyLMagnaSave': 'LEFT_MAGNASAVE',
+                'JoyRMagnaSave': 'RIGHT_MAGNASAVE',
+                'JoyExitGameKey': 'EXIT_TABLE',
+            }
+
+            config = {}
+
+            # Parse the file
+            for line in lines:
+                line = line.strip()
+                if '=' in line and not line.startswith(';'):
+                    key_part = line.split('=')[0].strip()
+                    value_part = line.split('=', 1)[1].strip()
+
+                    if key_part in vpx_to_ux_mapping and value_part:
+                        try:
+                            button_num = int(value_part)
+                            ux_action = vpx_to_ux_mapping[key_part]
+                            config[ux_action] = button_num
+                        except ValueError:
+                            pass
+
+            return config
+
+        except Exception as e:
+            print(f"Error reading joystick config from VPinballX.ini: {e}")
+            return {}
 
 
 class KeyCaptureButton(QPushButton):
@@ -121,7 +357,25 @@ class DisplayConfigTab(QWidget):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self.vpx_manager = VPXIniManager()
+        self.screens = self._detect_screens()
         self.init_ui()
+
+    def _detect_screens(self):
+        """Detect available screens and their properties"""
+        app = QApplication.instance()
+        screens = []
+        for i, screen in enumerate(app.screens()):
+            geometry = screen.geometry()
+            screens.append({
+                'index': i,
+                'name': screen.name(),
+                'width': geometry.width(),
+                'height': geometry.height(),
+                'x': geometry.x(),
+                'y': geometry.y()
+            })
+        return screens
 
     def init_ui(self):
         layout = QVBoxLayout()
@@ -155,8 +409,12 @@ class DisplayConfigTab(QWidget):
 
     def create_display_group(self, display_type: str, label: str) -> QGroupBox:
         """Create a configuration group for a display"""
-        group = QGroupBox(label)
-        layout = QFormLayout()
+        main_group = QGroupBox(label)
+        main_layout = QVBoxLayout()
+
+        # PinballUX Configuration
+        ux_group = QGroupBox("PinballUX Settings")
+        ux_layout = QFormLayout()
 
         # Get current config
         current = getattr(self.config.displays, display_type)
@@ -164,20 +422,27 @@ class DisplayConfigTab(QWidget):
         # Enabled checkbox
         enabled = QCheckBox()
         enabled.setChecked(current.enabled if current else False)
-        layout.addRow("Enabled:", enabled)
+        ux_layout.addRow("Enabled:", enabled)
 
-        # Screen number
-        screen_num = QSpinBox()
-        screen_num.setRange(0, 10)
-        screen_num.setValue(current.screen_number if current else 0)
-        layout.addRow("Screen Number:", screen_num)
+        # Screen selection dropdown
+        screen_combo = QComboBox()
+        for screen in self.screens:
+            screen_combo.addItem(
+                f"Screen {screen['index']}: {screen['name']} ({screen['width']}x{screen['height']})",
+                screen['index']
+            )
+
+        # Set current screen
+        if current and current.screen_number < len(self.screens):
+            screen_combo.setCurrentIndex(current.screen_number)
+        ux_layout.addRow("Screen:", screen_combo)
 
         # Rotation
         rotation = QComboBox()
         rotation.addItems(["0°", "90°", "180°", "270°"])
         if current:
             rotation.setCurrentIndex([0, 90, 180, 270].index(current.rotation) if current.rotation in [0, 90, 180, 270] else 0)
-        layout.addRow("Rotation:", rotation)
+        ux_layout.addRow("Rotation:", rotation)
 
         # DMD mode (only for DMD displays)
         dmd_mode = None
@@ -186,25 +451,108 @@ class DisplayConfigTab(QWidget):
             dmd_mode.addItems(["Full Screen", "Native Size"])
             if current:
                 dmd_mode.setCurrentIndex(0 if current.dmd_mode == "full" else 1)
-            layout.addRow("DMD Mode:", dmd_mode)
+            ux_layout.addRow("DMD Mode:", dmd_mode)
 
-        group.setLayout(layout)
+        ux_group.setLayout(ux_layout)
+        main_layout.addWidget(ux_group)
+
+        # VPinballX Configuration
+        vpx_group = QGroupBox("VPinballX.ini Settings (Auto-populated from Screen)")
+        vpx_layout = QFormLayout()
+
+        # Load VPX config
+        vpx_config = self.vpx_manager.read_display_config(display_type)
+
+        # Position X (auto-populated from screen, read-only)
+        vpx_x = QSpinBox()
+        vpx_x.setRange(-10000, 10000)
+        vpx_x.setValue(vpx_config.get('x', 0))
+        vpx_x.setEnabled(False)  # Grey out, not changeable
+        vpx_layout.addRow("X Position:", vpx_x)
+
+        # Position Y (auto-populated from screen, read-only)
+        vpx_y = QSpinBox()
+        vpx_y.setRange(-10000, 10000)
+        vpx_y.setValue(vpx_config.get('y', 0))
+        vpx_y.setEnabled(False)  # Grey out, not changeable
+        vpx_layout.addRow("Y Position:", vpx_y)
+
+        # Width (auto-populated from screen, read-only)
+        vpx_width = QSpinBox()
+        vpx_width.setRange(0, 10000)
+        vpx_width.setValue(vpx_config.get('width', 1920))
+        vpx_width.setEnabled(False)  # Grey out, not changeable
+        vpx_layout.addRow("Width:", vpx_width)
+
+        # Height (auto-populated from screen, read-only)
+        vpx_height = QSpinBox()
+        vpx_height.setRange(0, 10000)
+        vpx_height.setValue(vpx_config.get('height', 1080))
+        vpx_height.setEnabled(False)  # Grey out, not changeable
+        vpx_layout.addRow("Height:", vpx_height)
+
+        # VPX Rotation (for displays that support it)
+        vpx_rotation = None
+        if display_type in ['backglass', 'dmd', 'fulldmd', 'b2sdmd']:
+            vpx_rotation = QComboBox()
+            vpx_rotation.addItems(["0°", "90°", "180°", "270°"])
+            vpx_rot_value = vpx_config.get('rotation', 0)
+            if isinstance(vpx_rot_value, int) and vpx_rot_value in [0, 90, 180, 270]:
+                vpx_rotation.setCurrentIndex([0, 90, 180, 270].index(vpx_rot_value))
+            vpx_layout.addRow("VPX Rotation:", vpx_rotation)
+
+        vpx_group.setLayout(vpx_layout)
+        main_layout.addWidget(vpx_group)
+
+        main_group.setLayout(main_layout)
 
         # Store widgets for later retrieval
         self.display_widgets[display_type] = {
             'enabled': enabled,
-            'screen_number': screen_num,
+            'screen_combo': screen_combo,
             'rotation': rotation,
-            'dmd_mode': dmd_mode
+            'dmd_mode': dmd_mode,
+            'vpx_x': vpx_x,
+            'vpx_y': vpx_y,
+            'vpx_width': vpx_width,
+            'vpx_height': vpx_height,
+            'vpx_rotation': vpx_rotation
         }
 
-        return group
+        # Connect screen selection to auto-populate VPX fields
+        screen_combo.currentIndexChanged.connect(
+            lambda: self._update_vpx_fields(display_type)
+        )
+
+        # Always populate width/height from selected screen (they're read-only)
+        self._update_vpx_fields(display_type)
+
+        return main_group
+
+    def _update_vpx_fields(self, display_type: str):
+        """Auto-populate VPX position/size fields based on selected screen"""
+        widgets = self.display_widgets.get(display_type)
+        if not widgets:
+            return
+
+        screen_idx = widgets['screen_combo'].currentData()
+        if screen_idx is None or screen_idx >= len(self.screens):
+            return
+
+        screen = self.screens[screen_idx]
+
+        # Update VPX position and size fields
+        widgets['vpx_x'].setValue(screen['x'])
+        widgets['vpx_y'].setValue(screen['y'])
+        widgets['vpx_width'].setValue(screen['width'])
+        widgets['vpx_height'].setValue(screen['height'])
 
     def save_config(self):
-        """Save display configuration"""
+        """Save display configuration to both PinballUX and VPinballX.ini"""
         for display_type, widgets in self.display_widgets.items():
+            # Save PinballUX configuration
             enabled = widgets['enabled'].isChecked()
-            screen_number = widgets['screen_number'].value()
+            screen_number = widgets['screen_combo'].currentData()
             rotation_idx = widgets['rotation'].currentIndex()
             rotation = [0, 90, 180, 270][rotation_idx]
 
@@ -223,6 +571,22 @@ class DisplayConfigTab(QWidget):
                 setattr(self.config.displays, display_type, monitor_config)
             else:
                 setattr(self.config.displays, display_type, None)
+
+            # Save VPinballX.ini configuration
+            vpx_config = {
+                'x': widgets['vpx_x'].value(),
+                'y': widgets['vpx_y'].value(),
+                'width': widgets['vpx_width'].value(),
+                'height': widgets['vpx_height'].value()
+            }
+
+            # Add rotation if supported
+            if widgets['vpx_rotation']:
+                vpx_rot_idx = widgets['vpx_rotation'].currentIndex()
+                vpx_config['rotation'] = [0, 90, 180, 270][vpx_rot_idx]
+
+            # Write to VPinballX.ini
+            self.vpx_manager.write_display_config(display_type, vpx_config)
 
 
 class VPXConfigTab(QWidget):
@@ -329,8 +693,6 @@ class KeyboardConfigTab(QWidget):
         key_actions = [
             ('exit_key', 'Exit Application'),
             ('select_key', 'Select/Launch Table'),
-            ('up_key', 'Navigate Up'),
-            ('down_key', 'Navigate Down'),
             ('left_key', 'Navigate Left'),
             ('right_key', 'Navigate Right'),
         ]
@@ -357,6 +719,7 @@ class JoystickConfigTab(QWidget):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self.vpx_manager = VPXIniManager()
         self.init_ui()
 
     def init_ui(self):
@@ -385,6 +748,9 @@ class JoystickConfigTab(QWidget):
         self.enabled.setChecked(self.config.input.joystick_enabled)
         layout.addWidget(self.enabled)
 
+        # Read button mappings from VPinballX.ini first, fall back to PinballUX config
+        vpx_buttons = self.vpx_manager.read_joystick_config()
+
         # Button mappings
         form = QFormLayout()
 
@@ -405,7 +771,12 @@ class JoystickConfigTab(QWidget):
         ]
 
         for action, label in button_actions:
-            current_button = self.config.input.joystick_buttons.get(action, -1)
+            # Use VPX config if available, otherwise fall back to PinballUX config
+            if action in vpx_buttons:
+                current_button = vpx_buttons[action]
+            else:
+                current_button = self.config.input.joystick_buttons.get(action, -1)
+
             button = JoystickButton(action, current_button)
             self.button_widgets[action] = button
             form.addRow(f"{label}:", button)
@@ -595,16 +966,16 @@ class SetupWindow(QMainWindow):
             # Write to file
             self.config.save()
 
-            # Check if VPX config exists for joystick mappings
+            # Check if VPX config exists
             vpx_path = Path.home() / ".vpinball" / "VPinballX.ini"
             vpx_msg = ""
             if vpx_path.exists():
-                vpx_msg = f"\nJoystick mappings also saved to:\n{vpx_path}"
+                vpx_msg = f"\n\nVPinballX.ini updated:\n{vpx_path}\n(Display positions, joystick mappings)"
 
             QMessageBox.information(
                 self,
                 "Success",
-                f"Configuration saved successfully!\n\nConfig file: {self.config.config_file}{vpx_msg}"
+                f"Configuration saved successfully!\n\nPinballUX config:\n{self.config.config_file}{vpx_msg}"
             )
 
         except Exception as e:

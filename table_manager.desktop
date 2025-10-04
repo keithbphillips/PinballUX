@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PinballUX Table Manager
+Comment=Manage tables, download media, and scan table files
+Exec=/home/keith/PinballUX/.venv/bin/python /home/keith/PinballUX/table_manager.py
+Icon=folder-database
+Terminal=false
+Categories=Utility;

@@ -1,5 +1,3 @@
-![PinballUX](docs/PinballUX.png)
-
 # PinballUX
 
 A Visual Pinball frontend for Linux with multi-monitor support, inspired by PinballX.
@@ -126,8 +124,6 @@ python setup_gui.py
 ## Table Manager
 
 The Table Manager is a PyQt6 GUI application that handles table scanning, media management, and FTP downloads from ftp.gameex.com.
-
-![Table Manager](docs/Table_Manager.png)
 
 ### Running Table Manager
 
