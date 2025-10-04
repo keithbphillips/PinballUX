@@ -24,6 +24,8 @@ sys.path.insert(0, project_root)
 
 from pinballux.src.core.config import Config, MonitorConfig
 import pygame
+import shutil
+from datetime import datetime
 
 
 class KeyCaptureButton(QPushButton):
@@ -421,6 +423,92 @@ class JoystickConfigTab(QWidget):
             if btn_num >= 0:
                 self.config.input.joystick_buttons[action] = btn_num
 
+        # Also save to VPinballX.ini
+        self._save_to_vpx_ini()
+
+    def _save_to_vpx_ini(self):
+        """Save joystick button mappings to VPinballX.ini"""
+        vpx_path = Path.home() / ".vpinball" / "VPinballX.ini"
+
+        if not vpx_path.exists():
+            return  # VPX config doesn't exist yet
+
+        # Map PinballUX actions to VPX ini keys
+        vpx_mappings = {}
+
+        if 'LEFT_FLIPPER' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyLFlipKey'] = self.config.input.joystick_buttons['LEFT_FLIPPER']
+        if 'RIGHT_FLIPPER' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyRFlipKey'] = self.config.input.joystick_buttons['RIGHT_FLIPPER']
+        if 'PLUNGER' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyPlungerKey'] = self.config.input.joystick_buttons['PLUNGER']
+        if 'START' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyStartGameKey'] = self.config.input.joystick_buttons['START']
+        if 'MENU' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyAddCreditKey'] = self.config.input.joystick_buttons['MENU']
+        if 'LEFT_MAGNASAVE' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyLMagnaSave'] = self.config.input.joystick_buttons['LEFT_MAGNASAVE']
+        if 'RIGHT_MAGNASAVE' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyRMagnaSave'] = self.config.input.joystick_buttons['RIGHT_MAGNASAVE']
+        if 'EXIT_TABLE' in self.config.input.joystick_buttons:
+            vpx_mappings['JoyExitGameKey'] = self.config.input.joystick_buttons['EXIT_TABLE']
+
+        if not vpx_mappings:
+            return  # Nothing to save
+
+        try:
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = vpx_path.parent / f"VPinballX.ini.backup_{timestamp}"
+            shutil.copy2(vpx_path, backup_path)
+
+            # Read the file
+            with open(vpx_path, 'r') as f:
+                lines = f.readlines()
+
+            # Track which keys we've updated
+            updated_keys = set()
+
+            # Update existing joystick button lines
+            for i, line in enumerate(lines):
+                line_lower = line.lower().strip()
+                for key, value in vpx_mappings.items():
+                    key_lower = key.lower()
+                    if line_lower.startswith(f"{key_lower} =") or line_lower.startswith(f"{key_lower}="):
+                        original_key = line.split('=')[0].strip()
+                        lines[i] = f"{original_key} = {value}\n"
+                        updated_keys.add(key.lower())
+                        break
+
+            # Add any missing keys at the end of [Player] section
+            missing_keys = set(k.lower() for k in vpx_mappings.keys()) - updated_keys
+            if missing_keys:
+                # Find the [Player] section
+                player_section_idx = None
+                next_section_idx = None
+
+                for i, line in enumerate(lines):
+                    if line.strip().lower() == '[player]':
+                        player_section_idx = i
+                    elif player_section_idx is not None and line.strip().startswith('['):
+                        next_section_idx = i
+                        break
+
+                # Insert missing keys before the next section
+                if player_section_idx is not None:
+                    insert_idx = next_section_idx if next_section_idx else len(lines)
+                    for key, value in vpx_mappings.items():
+                        if key.lower() in missing_keys:
+                            lines.insert(insert_idx, f"{key} = {value}\n")
+
+            # Write back
+            with open(vpx_path, 'w') as f:
+                f.writelines(lines)
+
+        except Exception as e:
+            # Silently fail - VPX config is optional
+            pass
+
 
 class AudioConfigTab(QWidget):
     """Tab for audio configuration"""
@@ -507,10 +595,16 @@ class SetupWindow(QMainWindow):
             # Write to file
             self.config.save()
 
+            # Check if VPX config exists for joystick mappings
+            vpx_path = Path.home() / ".vpinball" / "VPinballX.ini"
+            vpx_msg = ""
+            if vpx_path.exists():
+                vpx_msg = f"\nJoystick mappings also saved to:\n{vpx_path}"
+
             QMessageBox.information(
                 self,
                 "Success",
-                f"Configuration saved successfully!\n\nConfig file: {self.config.config_file}"
+                f"Configuration saved successfully!\n\nConfig file: {self.config.config_file}{vpx_msg}"
             )
 
         except Exception as e:
