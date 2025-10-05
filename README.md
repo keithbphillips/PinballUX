@@ -34,17 +34,25 @@ cd PinballUX
 ```
 
 3. Install Visual Pinball Standalone for Linux:
+
+   **Option A: Automated Installation (Recommended)**
+   - Use the Setup GUI (step 7 below) to download and install VPinball automatically
+   - The Visual Pinball tab includes a "Download and Install" button
+   - VPinball will be downloaded, extracted, and configured automatically
+
+   **Option B: Manual Installation**
    - Download Visual Pinball Standalone for Linux from [GitHub Releases](https://github.com/vpinball/vpinball/releases)
    - Extract the VPinball files into the PinballUX root directory:
    ```bash
    mkdir vpinball
    cd vpinball
    unzip /path/to/VPinballX_GL-*.zip
-   tar -xvzf VPinballX_GL-*.tar.gz
+   tar -xvf VPinballX_GL-*.tar
    cd ..
    ```
    - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
-   - Place ROM files in `PinballUX/pinballux/data/roms/` directory
+
+   **ROM Files**: Place ROM files in `PinballUX/pinballux/data/roms/` directory
 
 4. Set up Python virtual environment:
 ```bash
@@ -97,6 +105,11 @@ python setup_gui.py
 - Set Visual Pinball executable path
 - Configure table directory
 - Configure media directory
+- **Download VPinball**: Automatically download and install VPinball from GitHub releases
+  - Pre-populated download URL (can be updated to latest release)
+  - Downloads, extracts zip and tar files automatically
+  - Installs to `vpinball/` directory in project root
+  - Automatically updates executable path after installation
 
 **Keyboard Tab**
 - Map keyboard keys for navigation

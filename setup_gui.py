@@ -8,14 +8,19 @@ import sys
 import os
 from pathlib import Path
 from typing import Dict, Optional
+import urllib.request
+import zipfile
+import tarfile
+import shutil
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QFormLayout,
     QSpinBox, QCheckBox, QGroupBox, QFileDialog, QMessageBox,
-    QComboBox, QListWidget, QListWidgetItem, QScrollArea
+    QComboBox, QListWidget, QListWidgetItem, QScrollArea, QProgressBar,
+    QTextEdit
 )
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal
 from PyQt6.QtGui import QKeySequence
 
 # Add the project root to Python path
@@ -598,12 +603,78 @@ class DisplayConfigTab(QWidget):
             self.vpx_manager.write_display_config(display_type, vpx_config)
 
 
+class VPinballDownloadThread(QThread):
+    """Thread for downloading and extracting VPinball"""
+    progress = pyqtSignal(str)
+    finished = pyqtSignal(bool, str)
+
+    def __init__(self, url: str, dest_dir: Path):
+        super().__init__()
+        self.url = url
+        self.dest_dir = dest_dir
+
+    def run(self):
+        try:
+            # Create destination directory
+            self.dest_dir.mkdir(parents=True, exist_ok=True)
+
+            # Download file
+            zip_path = self.dest_dir / "vpinball.zip"
+            self.progress.emit("Downloading VPinball...")
+
+            def report_hook(block_num, block_size, total_size):
+                if total_size > 0:
+                    percent = int((block_num * block_size / total_size) * 100)
+                    self.progress.emit(f"Downloading: {percent}%")
+
+            urllib.request.urlretrieve(self.url, zip_path, reporthook=report_hook)
+            self.progress.emit("Download complete!")
+
+            # Extract zip
+            self.progress.emit("Extracting zip file...")
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(self.dest_dir)
+            self.progress.emit("Zip extracted!")
+
+            # Find and extract tar file (check for various tar formats)
+            tar_patterns = ["*.tar", "*.tar.gz", "*.tar.bz2", "*.tgz"]
+            tar_path = None
+            for pattern in tar_patterns:
+                tar_files = list(self.dest_dir.glob(pattern))
+                if tar_files:
+                    tar_path = tar_files[0]
+                    break
+
+            if tar_path:
+                self.progress.emit(f"Found tar file: {tar_path.name}")
+                self.progress.emit(f"Extracting to {self.dest_dir}...")
+                with tarfile.open(tar_path, 'r:*') as tar_ref:
+                    tar_ref.extractall(self.dest_dir)
+                self.progress.emit("Tar extracted!")
+
+                # Clean up tar file
+                tar_path.unlink()
+                self.progress.emit(f"Cleaned up {tar_path.name}")
+            else:
+                self.progress.emit("No tar file found in zip")
+
+            # Clean up zip file
+            zip_path.unlink()
+            self.progress.emit("Cleaned up zip file")
+
+            self.finished.emit(True, f"✓ VPinball installed successfully to {self.dest_dir}")
+
+        except Exception as e:
+            self.finished.emit(False, f"Error: {str(e)}")
+
+
 class VPXConfigTab(QWidget):
     """Tab for VPX configuration"""
 
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self.download_thread = None
         self.init_ui()
 
     def init_ui(self):
@@ -642,6 +713,36 @@ class VPXConfigTab(QWidget):
         media_group.setLayout(media_layout)
         layout.addWidget(media_group)
 
+        # VPinball Download
+        download_group = QGroupBox("Download VPinball")
+        download_layout = QVBoxLayout()
+
+        # URL field
+        url_layout = QHBoxLayout()
+        url_layout.addWidget(QLabel("Download URL:"))
+        self.vpinball_url = QLineEdit(
+            "https://github.com/vpinball/vpinball/releases/download/v10.8.0-2051-28dd6c3/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-x64.zip"
+        )
+        url_layout.addWidget(self.vpinball_url)
+        download_layout.addLayout(url_layout)
+
+        # Download button
+        button_layout = QHBoxLayout()
+        self.download_btn = QPushButton("Download and Install")
+        self.download_btn.clicked.connect(self.download_vpinball)
+        button_layout.addWidget(self.download_btn)
+        button_layout.addStretch()
+        download_layout.addLayout(button_layout)
+
+        # Progress log
+        self.download_log = QTextEdit()
+        self.download_log.setMaximumHeight(100)
+        self.download_log.setReadOnly(True)
+        download_layout.addWidget(self.download_log)
+
+        download_group.setLayout(download_layout)
+        layout.addWidget(download_group)
+
         layout.addStretch()
         self.setLayout(layout)
 
@@ -675,6 +776,58 @@ class VPXConfigTab(QWidget):
         )
         if dir_path:
             self.media_dir.setText(dir_path)
+
+    def download_vpinball(self):
+        """Download and install VPinball"""
+        url = self.vpinball_url.text().strip()
+        if not url:
+            QMessageBox.warning(self, "Error", "Please enter a download URL")
+            return
+
+        # Destination directory
+        dest_dir = Path(project_root) / "vpinball"
+
+        # Confirm download
+        reply = QMessageBox.question(
+            self,
+            "Download VPinball",
+            f"This will download and install VPinball to:\n{dest_dir}\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Start download
+        self.download_log.clear()
+        self.download_log.append("Starting download...")
+        self.download_btn.setEnabled(False)
+
+        self.download_thread = VPinballDownloadThread(url, dest_dir)
+        self.download_thread.progress.connect(self.on_download_progress)
+        self.download_thread.finished.connect(self.on_download_finished)
+        self.download_thread.start()
+
+    def on_download_progress(self, message: str):
+        """Handle download progress"""
+        self.download_log.append(message)
+
+    def on_download_finished(self, success: bool, message: str):
+        """Handle download completion"""
+        self.download_btn.setEnabled(True)
+        self.download_log.append(message)
+
+        if success:
+            # Update executable path to the downloaded binary
+            dest_dir = Path(project_root) / "vpinball"
+            exe_path = dest_dir / "VPinballX_GL"
+            if exe_path.exists():
+                self.exe_path.setText(str(exe_path))
+                self.download_log.append(f"Executable path updated to: {exe_path}")
+
+            QMessageBox.information(self, "Success", message)
+        else:
+            QMessageBox.critical(self, "Error", message)
 
     def save_config(self):
         """Save VPX configuration"""
