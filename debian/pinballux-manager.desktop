@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PinballUX Table Manager
+Comment=Download and manage VPX table media packs
+Exec=pinballux-manager
+Icon=pinballux-manager
+Terminal=false
+Categories=Utility;Game;

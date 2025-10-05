@@ -4,18 +4,6 @@ Type=Application
 Name=PinballUX
 Comment=Visual Pinball frontend for Linux
 Exec=pinballux
-Icon=pinball
+Icon=pinballux
 Terminal=false
 Categories=Game;Emulator;
-
-[Desktop Action Setup]
-Name=Setup Configuration
-Exec=pinballux-setup
-Icon=preferences-system
-
-[Desktop Action Manager]
-Name=Table Manager
-Exec=pinballux-manager
-Icon=folder-documents
-
-Actions=Setup;Manager;

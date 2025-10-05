@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=PinballUX Setup
+Comment=Configure PinballUX displays, input, and VPinball installation
+Exec=pinballux-setup
+Icon=pinballux
+Terminal=false
+Categories=Settings;Game;

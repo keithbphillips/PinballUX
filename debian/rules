@@ -13,7 +13,11 @@ override_dh_auto_install:
 	# Copy pinballux directory, excluding large data files
 	rsync -av --exclude='data/media/videos' \
 	          --exclude='data/media/audio' \
-	          --exclude='data/media/images' \
+	          --exclude='data/media/images/table' \
+	          --exclude='data/media/images/backglass' \
+	          --exclude='data/media/images/wheel' \
+	          --exclude='data/media/images/dmd' \
+	          --exclude='data/media/images/topper' \
 	          --exclude='data/media/packs' \
 	          --exclude='data/packs' \
 	          --exclude='data/tables' \
@@ -34,9 +38,16 @@ override_dh_auto_install:
 	install -m 755 debian/pinballux-manager debian/pinballux/usr/bin/pinballux-manager
 	install -m 755 debian/pinballux-run debian/pinballux/usr/bin/pinballux
 
-	# Install desktop entry
+	# Install desktop entries
 	install -d debian/pinballux/usr/share/applications
 	install -m 644 debian/pinballux.desktop debian/pinballux/usr/share/applications/
+	install -m 644 debian/pinballux-setup.desktop debian/pinballux/usr/share/applications/
+	install -m 644 debian/pinballux-manager.desktop debian/pinballux/usr/share/applications/
+
+	# Install icons
+	install -d debian/pinballux/usr/share/pixmaps
+	install -m 644 pinballux/data/media/images/ui/PinballUX.png debian/pinballux/usr/share/pixmaps/pinballux.png
+	install -m 644 pinballux/data/media/images/ui/TableManager.png debian/pinballux/usr/share/pixmaps/pinballux-manager.png
 
 	# Create data directories with proper structure (at /opt/pinballux/data/)
 	install -d debian/pinballux/opt/pinballux/data/tables
