@@ -140,20 +140,19 @@ class Config:
         """Update paths to use project-relative directories"""
         project_root = Path(__file__).parents[3]  # Go up from src/core/config.py to project root
 
-        new_executable_path = str(project_root / "vpinball" / "VPinballX_GL")
-        new_table_dir = str(project_root / "pinballux" / "data" / "tables")
-        new_media_dir = str(project_root / "pinballux" / "data" / "media")
+        default_executable_path = str(project_root / "vpinball" / "VPinballX_GL")
+        default_table_dir = str(project_root / "data" / "tables")
+        default_media_dir = str(project_root / "data" / "media")
 
-        # Update executable path if empty or pointing to old locations
-        if not self.vpx.executable_path or "vpinball_standalone" in self.vpx.executable_path or "VPinballX_GL" in self.vpx.executable_path:
-            self.vpx.executable_path = new_executable_path
+        # Only update paths if they are empty (never overwrite user-set paths)
+        if not self.vpx.executable_path:
+            self.vpx.executable_path = default_executable_path
 
-        # Update paths if they're still using old defaults or are empty
-        if not self.vpx.table_directory or self.vpx.table_directory.endswith("VPX/Tables"):
-            self.vpx.table_directory = new_table_dir
+        if not self.vpx.table_directory:
+            self.vpx.table_directory = default_table_dir
 
-        if not self.vpx.media_directory or self.vpx.media_directory.endswith("VPX/Media"):
-            self.vpx.media_directory = new_media_dir
+        if not self.vpx.media_directory:
+            self.vpx.media_directory = default_media_dir
 
     def save(self) -> None:
         """Save configuration to file"""
@@ -190,9 +189,10 @@ class Config:
 
         self.vpx = VPXConfig(
             executable_path=str(project_root / "vpinball" / "VPinballX_GL"),
-            table_directory=str(project_root / "pinballux" / "data" / "tables"),
-            media_directory=str(project_root / "pinballux" / "data" / "media")
+            table_directory=str(project_root / "data" / "tables"),
+            media_directory=str(project_root / "data" / "media")
         )
 
         self.input = InputConfig()
+        self.audio = AudioConfig()
         self.save()

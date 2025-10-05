@@ -38,6 +38,30 @@ override_dh_auto_install:
 	install -d debian/pinballux/usr/share/applications
 	install -m 644 debian/pinballux.desktop debian/pinballux/usr/share/applications/
 
+	# Create data directories with proper structure (at /opt/pinballux/data/)
+	install -d debian/pinballux/opt/pinballux/data/tables
+	install -d debian/pinballux/opt/pinballux/data/roms
+	install -d debian/pinballux/opt/pinballux/data/media/videos/table
+	install -d debian/pinballux/opt/pinballux/data/media/videos/backglass
+	install -d debian/pinballux/opt/pinballux/data/media/videos/dmd
+	install -d debian/pinballux/opt/pinballux/data/media/videos/real_dmd
+	install -d debian/pinballux/opt/pinballux/data/media/videos/real_dmd_color
+	install -d debian/pinballux/opt/pinballux/data/media/videos/topper
+	install -d debian/pinballux/opt/pinballux/data/media/images/table
+	install -d debian/pinballux/opt/pinballux/data/media/images/backglass
+	install -d debian/pinballux/opt/pinballux/data/media/images/wheel
+	install -d debian/pinballux/opt/pinballux/data/media/images/dmd
+	install -d debian/pinballux/opt/pinballux/data/media/images/topper
+	install -d debian/pinballux/opt/pinballux/data/media/audio/table
+	install -d debian/pinballux/opt/pinballux/data/media/audio/launch
+	install -d debian/pinballux/opt/pinballux/data/media/audio/ui
+	install -d debian/pinballux/opt/pinballux/data/media/packs
+
+override_dh_fixperms:
+	dh_fixperms
+	# Make data directories writable by all users
+	chmod -R 777 debian/pinballux/opt/pinballux/data || true
+
 override_dh_auto_test:
 	# Skip tests
 

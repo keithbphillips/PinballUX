@@ -4,21 +4,39 @@
 
 ### Option 1: Install from .deb Package (Recommended)
 
-1. **Download the latest package:**
+1. **Download the package and installer:**
 
-   Visit the [Releases page](https://github.com/keithbphillips/PinballUX/releases) and download `pinballux_0.1.0-1_all.deb`
-
-   Or use wget:
    ```bash
    wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.1.0-1_all.deb
+   wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
+   chmod +x install.sh
    ```
 
-2. **Install the package:**
+2. **Run the installer:**
+   ```bash
+   ./install.sh
+   ```
+
+   The installer will automatically handle dependency installation.
+
+   **Manual installation options:**
+
+   Using gdebi:
+   ```bash
+   sudo apt install gdebi-core
+   sudo gdebi pinballux_0.1.0-1_all.deb
+   ```
+
+   Using apt (copy to /tmp first to avoid permission issues):
+   ```bash
+   cp pinballux_0.1.0-1_all.deb /tmp/
+   sudo apt-get install /tmp/pinballux_0.1.0-1_all.deb
+   ```
+
+   Or using dpkg:
    ```bash
    sudo dpkg -i pinballux_0.1.0-1_all.deb
-
-   # If dependencies are missing, install them:
-   sudo apt install -f
+   sudo apt-get install -f -y
    ```
 
 3. Run the Setup GUI to configure PinballUX:
@@ -34,7 +52,7 @@
    ```bash
    pinballux-manager
    ```
-   - Place your VPX tables in `/opt/pinballux/pinballux/data/tables/`
+   - Place your VPX tables in `/opt/pinballux/data/tables/`
    - Scan tables automatically on startup
    - Download media from ftp.gameex.com
 
@@ -60,9 +78,9 @@ After installation, you can access PinballUX from:
 - **Application**: `/opt/pinballux/`
 - **Configuration**: `~/.config/pinballux/config.json`
 - **Database**: `~/.config/pinballux/pinballux.db`
-- **Tables**: `/opt/pinballux/pinballux/data/tables/`
-- **Media**: `/opt/pinballux/pinballux/data/media/`
-- **ROMs**: `/opt/pinballux/pinballux/data/roms/`
+- **Tables**: `/opt/pinballux/data/tables/`
+- **Media**: `/opt/pinballux/data/media/`
+- **ROMs**: `/opt/pinballux/data/roms/`
 - **VPinball**: `/opt/pinballux/vpinball/` (after download via Setup GUI)
 
 ## Updating
@@ -71,7 +89,7 @@ To update to a new version:
 
 ```bash
 # Download the new .deb package
-sudo dpkg -i pinballux_0.2.0-1_all.deb
+sudo gdebi pinballux_0.2.0-1_all.deb
 ```
 
 Your configuration and data will be preserved.
@@ -106,7 +124,7 @@ sudo apt install -f
 If you can't write to data directories:
 
 ```bash
-sudo chmod -R 777 /opt/pinballux/pinballux/data
+sudo chmod -R 777 /opt/pinballux/data
 ```
 
 ### Reset Configuration

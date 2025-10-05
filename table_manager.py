@@ -32,10 +32,17 @@ from PyQt6.QtCore import QUrl
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-from pinballux.src.core.config import Config
-from pinballux.src.database.models import DatabaseManager
-from pinballux.src.database.service import TableService
-from pinballux.src.database.table_manager import TableManager as TableScanner
+# Handle both development and installed import paths
+try:
+    from pinballux.src.core.config import Config
+    from pinballux.src.database.models import DatabaseManager
+    from pinballux.src.database.service import TableService
+    from pinballux.src.database.table_manager import TableManager as TableScanner
+except ModuleNotFoundError:
+    from src.core.config import Config
+    from src.database.models import DatabaseManager
+    from src.database.service import TableService
+    from src.database.table_manager import TableManager as TableScanner
 
 
 @dataclass
@@ -180,7 +187,10 @@ class FTPCacheScanThread(QThread):
         self.db_manager = db_manager
 
     def run(self):
-        from pinballux.src.database.models import FTPMediaCache
+        try:
+            from pinballux.src.database.models import FTPMediaCache
+        except ModuleNotFoundError:
+            from src.database.models import FTPMediaCache
         from datetime import datetime
 
         try:
@@ -270,20 +280,27 @@ class FTPCacheScanThread(QThread):
                         continue
 
             # Store last update time in settings
-            with self.db_manager.get_session() as session:
+            try:
                 from pinballux.src.database.models import Settings
-                last_update = session.query(Settings).filter(Settings.key == 'ftp_cache_last_update').first()
-                if last_update:
-                    last_update.value = datetime.utcnow().isoformat()
-                    last_update.updated_at = datetime.utcnow()
-                else:
-                    last_update = Settings(
-                        key='ftp_cache_last_update',
-                        value=datetime.utcnow().isoformat(),
-                        type='string'
-                    )
-                    session.add(last_update)
-                session.commit()
+            except ModuleNotFoundError:
+                from src.database.models import Settings
+
+            with self.db_manager.get_session() as session:
+                try:
+                    last_update = session.query(Settings).filter(Settings.key == 'ftp_cache_last_update').first()
+                    if last_update:
+                        last_update.value = datetime.utcnow().isoformat()
+                        last_update.updated_at = datetime.utcnow()
+                    else:
+                        last_update = Settings(
+                            key='ftp_cache_last_update',
+                            value=datetime.utcnow().isoformat(),
+                            type='string'
+                        )
+                        session.add(last_update)
+                    session.commit()
+                except Exception as e:
+                    self.progress.emit(f"⚠ Could not update cache timestamp: {str(e)}")
 
             ftp.quit()
             self.finished.emit(True, f"✓ Cache updated! {total_files} files indexed.\n\nNow ready to Download Media.")
@@ -309,7 +326,10 @@ class FTPDownloadThread(QThread):
         self.temp_dir = Path(project_root) / "ftp_downloads_temp"
 
     def run(self):
-        from pinballux.src.database.models import FTPMediaCache
+        try:
+            from pinballux.src.database.models import FTPMediaCache
+        except ModuleNotFoundError:
+            from src.database.models import FTPMediaCache
 
         try:
             # Create temp directory
@@ -1223,7 +1243,10 @@ class MainWindow(QMainWindow):
         Returns:
             True if cache refresh was triggered, False otherwise
         """
-        from pinballux.src.database.models import Settings
+        try:
+            from pinballux.src.database.models import Settings
+        except ModuleNotFoundError:
+            from src.database.models import Settings
         from datetime import datetime, timedelta
 
         try:

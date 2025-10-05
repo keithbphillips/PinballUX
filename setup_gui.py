@@ -27,7 +27,11 @@ from PyQt6.QtGui import QKeySequence
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
-from pinballux.src.core.config import Config, MonitorConfig
+# Handle both development and installed import paths
+try:
+    from pinballux.src.core.config import Config, MonitorConfig
+except ModuleNotFoundError:
+    from src.core.config import Config, MonitorConfig
 import pygame
 import shutil
 from datetime import datetime

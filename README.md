@@ -27,9 +27,24 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 **Download and install the .deb package:**
 
 ```bash
+# Download the package and installer
 wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.1.0-1_all.deb
-sudo dpkg -i pinballux_0.1.0-1_all.deb
-sudo apt install -f  # Install dependencies
+wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
+chmod +x install.sh
+
+# Run the installer (handles dependencies automatically)
+./install.sh
+```
+
+Or install manually:
+```bash
+# Using gdebi (recommended)
+sudo apt install gdebi-core
+sudo gdebi pinballux_0.1.0-1_all.deb
+
+# Or using apt (copy to /tmp first)
+cp pinballux_0.1.0-1_all.deb /tmp/
+sudo apt-get install /tmp/pinballux_0.1.0-1_all.deb
 ```
 
 Then run `pinballux-setup` to configure and get started!

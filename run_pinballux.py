@@ -11,7 +11,11 @@ project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
 
 # Import and run the main application
-from pinballux.src.main import main
+# Handle both development and installed import paths
+try:
+    from pinballux.src.main import main
+except ModuleNotFoundError:
+    from src.main import main
 
 if __name__ == "__main__":
     main()

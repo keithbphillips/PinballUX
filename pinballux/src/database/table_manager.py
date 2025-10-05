@@ -16,11 +16,19 @@ script_dir = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(script_dir))
 os.chdir(script_dir)
 
-from pinballux.src.core.config import Config
-from pinballux.src.core.logger import get_logger
-from pinballux.src.database.models import DatabaseManager
-from pinballux.src.database.service import TableService
-from pinballux.src.media.manager import MediaManager
+# Handle both development and installed import paths
+try:
+    from pinballux.src.core.config import Config
+    from pinballux.src.core.logger import get_logger
+    from pinballux.src.database.models import DatabaseManager
+    from pinballux.src.database.service import TableService
+    from pinballux.src.media.manager import MediaManager
+except ModuleNotFoundError:
+    from src.core.config import Config
+    from src.core.logger import get_logger
+    from src.database.models import DatabaseManager
+    from src.database.service import TableService
+    from src.media.manager import MediaManager
 
 
 logger = get_logger(__name__)

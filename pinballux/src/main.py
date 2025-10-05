@@ -16,9 +16,15 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 pinballux_dir = os.path.dirname(current_dir)
 sys.path.insert(0, pinballux_dir)
 
-from pinballux.src.core.application import PinballUXApp
-from pinballux.src.core.config import Config
-from pinballux.src.core.logger import setup_logging
+# Handle both development and installed import paths
+try:
+    from pinballux.src.core.application import PinballUXApp
+    from pinballux.src.core.config import Config
+    from pinballux.src.core.logger import setup_logging
+except ModuleNotFoundError:
+    from src.core.application import PinballUXApp
+    from src.core.config import Config
+    from src.core.logger import setup_logging
 
 
 def setup_vpinmame_roms_symlink():
@@ -30,10 +36,13 @@ def setup_vpinmame_roms_symlink():
 
     # Get the project roms directory
     project_root = Path(__file__).parent.parent.parent
-    roms_dir = project_root / "pinballux" / "data" / "roms"
+    roms_dir = project_root / "data" / "roms"
 
-    # Ensure project roms directory exists
-    roms_dir.mkdir(parents=True, exist_ok=True)
+    # Ensure project roms directory exists (only if writable)
+    try:
+        roms_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        logger.info(f"ROMs directory already exists at {roms_dir}")
 
     # Get the VPinMAME roms directory path
     vpinmame_dir = Path.home() / ".pinmame"
