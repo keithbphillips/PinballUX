@@ -22,7 +22,7 @@ from PyQt6.QtWidgets import (
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
     QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer
 from PyQt6.QtGui import QPixmap, QMovie
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -95,7 +95,42 @@ def match_file_to_table(filename: str, table) -> float:
     clean_filename = Path(filename).stem
     filename_title = clean_filename.split('(')[0].strip()
     table_title = table.name.split('(')[0].strip()
-    return similarity_ratio(filename_title, table_title)
+
+    # Reject files with no actual title (only manufacturer/year in parentheses)
+    # e.g., "(Bally 1978).mp3", "(Gottlieb 1992).mp3"
+    if not filename_title or len(filename_title) < 3:
+        return 0.0
+
+    # Reject files that are just generic descriptions
+    generic_terms = ['original', 'pinball', 'fx2', 'fx3', 'system']
+    if filename_title.lower() in generic_terms:
+        return 0.0
+
+    # Calculate direct similarity
+    direct_score = similarity_ratio(filename_title, table_title)
+
+    # If direct match is good, return it
+    if direct_score >= 0.90:
+        return direct_score
+
+    # Check if filename is a prefix/subset of table name (for variants like "Premium", "LE", etc.)
+    # e.g., "Metallica" matches "Metallica Premium Monsters"
+    if filename_title.lower() in table_title.lower():
+        # Boost the score if it's a prefix match (filename starts the table name)
+        if table_title.lower().startswith(filename_title.lower()):
+            # Prefix match is very strong, but require minimum length
+            # "Metallica" matching "Metallica Premium" - good
+            # "A" matching "Attack from Mars" - too short
+            if len(filename_title) >= 4:
+                return 0.95  # High score for prefix matches with decent length
+            else:
+                return direct_score
+        else:
+            # Substring match (filename appears in middle/end of table name)
+            # Less reliable, use direct score
+            return direct_score
+
+    return direct_score
 
 
 def get_local_media_path(media_type: str, filename: str) -> Path:
@@ -133,71 +168,289 @@ def get_local_media_path(media_type: str, filename: str) -> Path:
         return base_path / "images" / media_type / filename
 
 
+class FTPCacheScanThread(QThread):
+    """Thread for scanning FTP directories and caching file listings"""
+    progress = pyqtSignal(str)  # Status messages
+    finished = pyqtSignal(bool, str)  # success, message
+
+    def __init__(self, username: str, password: str, db_manager: DatabaseManager):
+        super().__init__()
+        self.username = username
+        self.password = password
+        self.db_manager = db_manager
+
+    def run(self):
+        from pinballux.src.database.models import FTPMediaCache
+        from datetime import datetime
+
+        try:
+            # Connect to FTP
+            self.progress.emit("Connecting to ftp.gameex.com...")
+            ftp = FTP("ftp.gameex.com")
+            ftp.encoding = 'latin-1'
+            ftp.login(self.username, self.password)
+            self.progress.emit("✓ Connected to FTP server")
+
+            # Get media directories
+            base_path = "/-PinballX-/Media/Visual Pinball"
+
+            # Define media directories to scan
+            media_mappings = {
+                'launch_audio': [f"{base_path}/Table Audio"],
+                'table_audio': [f"{base_path}/Table Audio"],
+                'backglass': [
+                    f"{base_path}/Backglass Images",
+                    f"{base_path}/Backglass Videos"
+                ],
+                'table': [
+                    f"{base_path}/Table Images",
+                    f"{base_path}/Table Videos"
+                ],
+                'dmd': [
+                    f"{base_path}/Real DMD Images",
+                    f"{base_path}/Real DMD Videos - Color"
+                ],
+                'topper': [
+                    f"{base_path}/Topper Images",
+                    f"{base_path}/Topper Videos"
+                ],
+                'wheel': [f"{base_path}/Wheel Images"]
+            }
+
+            # Clear existing cache
+            self.progress.emit("Clearing old cache...")
+            with self.db_manager.get_session() as session:
+                session.query(FTPMediaCache).delete()
+                session.commit()
+
+            total_files = 0
+
+            # Scan each media directory
+            for media_type, directories in media_mappings.items():
+                for directory in directories:
+                    self.progress.emit(f"Scanning {media_type}: {directory}...")
+
+                    try:
+                        ftp.cwd(directory)
+
+                        # Use NLST to get clean filenames (not full LIST details)
+                        try:
+                            filenames = []
+                            ftp.retrlines('NLST', filenames.append)
+
+                            # Filter media files
+                            media_extensions = {
+                                '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif',
+                                '.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm',
+                                '.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'
+                            }
+
+                            with self.db_manager.get_session() as session:
+                                for filename in filenames:
+                                    ext = Path(filename).suffix.lower()
+                                    if ext in media_extensions:
+                                        cache_entry = FTPMediaCache(
+                                            directory=directory,
+                                            filename=filename,
+                                            file_size=0,  # Size not critical for matching
+                                            media_type=media_type
+                                        )
+                                        session.add(cache_entry)
+                                        total_files += 1
+
+                                session.commit()
+                        except Exception as file_err:
+                            self.progress.emit(f"⚠ Error parsing files in {directory}: {str(file_err)}")
+                            continue
+
+                        self.progress.emit(f"✓ Scanned {media_type}")
+
+                    except Exception as e:
+                        self.progress.emit(f"⚠ Could not scan {directory}: {str(e)}")
+                        continue
+
+            # Store last update time in settings
+            with self.db_manager.get_session() as session:
+                from pinballux.src.database.models import Settings
+                last_update = session.query(Settings).filter(Settings.key == 'ftp_cache_last_update').first()
+                if last_update:
+                    last_update.value = datetime.utcnow().isoformat()
+                    last_update.updated_at = datetime.utcnow()
+                else:
+                    last_update = Settings(
+                        key='ftp_cache_last_update',
+                        value=datetime.utcnow().isoformat(),
+                        type='string'
+                    )
+                    session.add(last_update)
+                session.commit()
+
+            ftp.quit()
+            self.finished.emit(True, f"✓ Cache updated! {total_files} files indexed.")
+
+        except Exception as e:
+            self.finished.emit(False, f"Error scanning FTP: {str(e)}")
+
+
 class FTPDownloadThread(QThread):
     """Thread for FTP download operations"""
     progress = pyqtSignal(str)  # Status messages
     file_downloaded = pyqtSignal(str, str, str, str)  # media_type, temp_path, ftp_filename, table_name
     finished = pyqtSignal(bool, str)  # success, message
 
-    def __init__(self, username: str, password: str, table, config_dir: Path):
+    def __init__(self, username: str, password: str, table, config_dir: Path, db_manager: DatabaseManager):
         super().__init__()
         self.username = username
         self.password = password
         self.table = table
         self.config_dir = config_dir
+        self.db_manager = db_manager
         self.temp_dir = Path(project_root) / "ftp_downloads_temp"
 
     def run(self):
+        from pinballux.src.database.models import FTPMediaCache
+
         try:
             # Create temp directory
             self.temp_dir.mkdir(exist_ok=True)
 
-            # Connect to FTP
+            # Query cached database for matching files
+            self.progress.emit("Searching cached media database...")
+            matched_files = []
+
+            # Extract table name for faster comparison
+            table_name_base = self.table.name.split('(')[0].strip().lower()
+
+            with self.db_manager.get_session() as session:
+                # Get all cached files
+                all_files = session.query(FTPMediaCache).all()
+                total_files = len(all_files)
+
+                self.progress.emit(f"Scanning {total_files} cached files...")
+
+                # Match files to table
+                checked = 0
+                for cached_file in all_files:
+                    checked += 1
+
+                    # Progress update every 500 files
+                    if checked % 500 == 0:
+                        self.progress.emit(f"Checked {checked}/{total_files} files...")
+
+                    # Quick pre-filter: Skip files that definitely won't match
+                    # Extract filename base for comparison
+                    file_base = Path(cached_file.filename).stem.split('(')[0].strip().lower()
+
+                    # Skip if filename has no title or is too short
+                    if len(file_base) < 3:
+                        continue
+
+                    # Skip if first 3 chars don't match at all (fast rejection)
+                    if len(table_name_base) >= 3 and len(file_base) >= 3:
+                        if file_base[:3] != table_name_base[:3]:
+                            continue
+
+                    # Now do full similarity matching
+                    score = match_file_to_table(cached_file.filename, self.table)
+
+                    # Only download files with high similarity (90%+)
+                    if score >= 0.90:
+                        matched_files.append({
+                            'filename': cached_file.filename,
+                            'directory': cached_file.directory,
+                            'media_type': cached_file.media_type,
+                            'file_size': cached_file.file_size,
+                            'score': score
+                        })
+
+            if not matched_files:
+                self.finished.emit(True, "No matching media files found")
+                return
+
+            self.progress.emit(f"✓ Found {len(matched_files)} matching files")
+
+            # Group files by directory for efficient batch downloading
+            files_by_directory = {}
+            for file_info in matched_files:
+                directory = file_info['directory']
+                if directory not in files_by_directory:
+                    files_by_directory[directory] = []
+                files_by_directory[directory].append(file_info)
+
+            self.progress.emit(f"Organized into {len(files_by_directory)} directories")
+
+            # Connect to FTP for downloading
             self.progress.emit("Connecting to ftp.gameex.com...")
             ftp = FTP("ftp.gameex.com")
             ftp.encoding = 'latin-1'
             ftp.login(self.username, self.password)
-            self.progress.emit("✓ Connected and logged in")
+            self.progress.emit("✓ Connected to FTP")
 
-            # Get media directories
-            base_path = "/-PinballX-/Media/Visual Pinball"
-            media_dirs = self.get_media_subdirectories(ftp, base_path)
-
-            # Download matching files
+            # Download matched files by directory
             download_count = 0
-            for media_type, directories in media_dirs.items():
-                for directory in directories:
-                    files = self.list_media_files(ftp, directory)
-                    if not files:
-                        continue
+            total_to_download = len(matched_files)
+            processed = 0
 
-                    for filename in files:
-                        score = match_file_to_table(filename, self.table)
+            for directory, files in files_by_directory.items():
+                try:
+                    # Change to directory once for all files in it
+                    ftp.cwd(directory)
+                    self.progress.emit(f"📁 In directory: {Path(directory).name}")
 
-                        # Only download files with high similarity (90%+)
-                        if score >= 0.90:
-                            # Download to temp directory with media type structure
-                            media_type_dir = self.temp_dir / media_type
-                            media_type_dir.mkdir(exist_ok=True)
+                    for file_info in files:
+                        processed += 1
+                        filename = file_info['filename']
+                        media_type = file_info['media_type']
 
-                            temp_path = media_type_dir / filename
+                        # Download to temp directory with media type structure
+                        media_type_dir = self.temp_dir / media_type
+                        media_type_dir.mkdir(exist_ok=True)
 
-                            if temp_path.exists():
-                                # File already in cache, skip download but still add to list
-                                self.progress.emit(f"⚡ Cached: {filename}")
-                                self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
-                            else:
-                                # Download file
-                                ftp.cwd(directory)
+                        temp_path = media_type_dir / filename
+
+                        if temp_path.exists():
+                            # File already in cache, skip download but still add to list
+                            self.progress.emit(f"⚡ [{processed}/{total_to_download}] Cached: {filename}")
+                            self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
+                        else:
+                            # Download file
+                            try:
+                                import time
+                                start_time = time.time()
+                                bytes_downloaded = 0
+
+                                def download_callback(data):
+                                    nonlocal bytes_downloaded
+                                    bytes_downloaded += len(data)
+                                    f.write(data)
+
+                                print(f"\n[DOWNLOAD] Starting: {filename}")
+                                print(f"[DOWNLOAD] Directory: {directory}")
+
                                 with open(temp_path, 'wb') as f:
-                                    ftp.retrbinary(f'RETR {filename}', f.write)
+                                    ftp.retrbinary(f'RETR {filename}', download_callback)
+
+                                elapsed = time.time() - start_time
+                                speed_kbps = (bytes_downloaded / 1024) / elapsed if elapsed > 0 else 0
+                                size_kb = bytes_downloaded / 1024
+
+                                print(f"[DOWNLOAD] Complete: {filename}")
+                                print(f"[DOWNLOAD] Size: {size_kb:.2f} KB, Time: {elapsed:.2f}s, Speed: {speed_kbps:.2f} KB/s")
 
                                 download_count += 1
-                                self.progress.emit(f"✓ Downloaded: {filename}")
+                                self.progress.emit(f"✓ [{processed}/{total_to_download}] Downloaded: {filename} ({size_kb:.1f} KB @ {speed_kbps:.1f} KB/s)")
                                 self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
+                            except Exception as e:
+                                print(f"[DOWNLOAD] ERROR: {filename} - {str(e)}")
+                                self.progress.emit(f"⚠ [{processed}/{total_to_download}] Failed: {filename} - {str(e)}")
+
+                except Exception as dir_error:
+                    self.progress.emit(f"⚠ Error accessing {directory}: {str(dir_error)}")
+                    continue
 
             ftp.quit()
-            self.finished.emit(True, f"Downloaded {download_count} files")
+            self.progress.emit(f"✓ Complete: Downloaded {download_count}, Cached {processed - download_count}")
+            self.finished.emit(True, f"Downloaded {download_count} new files, {processed - download_count} from cache")
 
         except Exception as e:
             self.finished.emit(False, f"Error: {str(e)}")
@@ -737,6 +990,9 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.load_saved_credentials()
 
+        # Check if media cache needs refresh
+        self.check_cache_age()
+
         # Offer to scan tables on startup
         self.scan_tables_on_startup()
 
@@ -798,6 +1054,11 @@ class MainWindow(QMainWindow):
         self.import_pack_btn.clicked.connect(self.import_media_pack)
         self.import_pack_btn.setEnabled(False)
         table_layout.addWidget(self.import_pack_btn)
+
+        self.refresh_cache_btn = QPushButton("Refresh Media Cache")
+        self.refresh_cache_btn.clicked.connect(self.refresh_media_cache)
+        self.refresh_cache_btn.setToolTip("Update the media file listing from FTP (recommended weekly)")
+        table_layout.addWidget(self.refresh_cache_btn)
 
         table_group.setLayout(table_layout)
         layout.addWidget(table_group)
@@ -882,7 +1143,7 @@ class MainWindow(QMainWindow):
         self.media_review.clear_files()
 
         # Start download thread
-        self.download_thread = FTPDownloadThread(username, password, self.selected_table, self.config_dir)
+        self.download_thread = FTPDownloadThread(username, password, self.selected_table, self.config_dir, self.db_manager)
         self.download_thread.progress.connect(self.update_status)
         self.download_thread.file_downloaded.connect(self.on_file_downloaded)
         self.download_thread.finished.connect(self.download_finished)
@@ -941,6 +1202,61 @@ class MainWindow(QMainWindow):
         """Add message to progress log"""
         self.progress_text.append(message)
 
+    def check_cache_age(self):
+        """Check if media cache needs refresh (weekly)"""
+        from pinballux.src.database.models import Settings
+        from datetime import datetime, timedelta
+
+        try:
+            with self.db_manager.get_session() as session:
+                last_update = session.query(Settings).filter(Settings.key == 'ftp_cache_last_update').first()
+
+                if not last_update:
+                    # No cache exists, prompt to create one
+                    reply = QMessageBox.question(
+                        self,
+                        "Media Cache",
+                        "No media cache found. Would you like to build the cache now?\n\n"
+                        "This will scan FTP media directories (takes 1-2 minutes) and enable fast media searches.",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+
+                    if reply == QMessageBox.StandardButton.Yes:
+                        # Will trigger refresh after credentials are loaded
+                        QTimer.singleShot(500, self.auto_refresh_cache)
+                    return
+
+                # Check if cache is older than 7 days
+                last_update_time = datetime.fromisoformat(last_update.value)
+                age = datetime.utcnow() - last_update_time
+
+                if age > timedelta(days=7):
+                    days_old = age.days
+                    reply = QMessageBox.question(
+                        self,
+                        "Media Cache Update",
+                        f"Media cache is {days_old} days old. Would you like to refresh it?\n\n"
+                        "Recommended: Update weekly for latest media files.",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                    )
+
+                    if reply == QMessageBox.StandardButton.Yes:
+                        QTimer.singleShot(500, self.auto_refresh_cache)
+
+        except Exception as e:
+            self.log(f"Error checking cache age: {e}")
+
+    def auto_refresh_cache(self):
+        """Auto-refresh cache (called from timer)"""
+        if self.username_input.text() and self.password_input.text():
+            self.refresh_media_cache()
+        else:
+            QMessageBox.information(
+                self,
+                "FTP Credentials Required",
+                "Please enter FTP credentials and click 'Refresh Media Cache' to update the cache."
+            )
+
     def scan_tables_on_startup(self):
         """Scan tables on startup"""
         self.run_table_scan()
@@ -984,6 +1300,56 @@ class MainWindow(QMainWindow):
             self.log(f"✗ Error scanning tables: {e}")
             self.status_label.setText("✗ Scan failed")
             QMessageBox.warning(self, "Scan Error", f"Error scanning tables:\n{e}")
+
+    def refresh_media_cache(self):
+        """Refresh the FTP media cache"""
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter FTP credentials")
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Refresh Media Cache",
+            "This will scan all FTP media directories and update the cache.\n\nThis may take 1-2 minutes. Continue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Start cache scan thread
+        self.cache_scan_thread = FTPCacheScanThread(username, password, self.db_manager)
+        self.cache_scan_thread.progress.connect(self.update_status)
+        self.cache_scan_thread.finished.connect(self.cache_refresh_finished)
+        self.cache_scan_thread.start()
+
+        # Update UI state
+        self.refresh_cache_btn.setEnabled(False)
+        self.download_btn.setEnabled(False)
+        self.select_table_btn.setEnabled(False)
+        self.status_label.setText("Refreshing media cache...")
+        self.progress_bar.show()
+        self.log("Starting cache refresh...")
+
+    def cache_refresh_finished(self, success: bool, message: str):
+        """Handle cache refresh completion"""
+        self.refresh_cache_btn.setEnabled(True)
+        self.download_btn.setEnabled(bool(self.selected_table))
+        self.select_table_btn.setEnabled(True)
+        self.progress_bar.hide()
+
+        if success:
+            self.status_label.setText("✓ Cache Refreshed")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+        else:
+            self.status_label.setText("✗ Cache Refresh Failed")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
+
+        self.log(message)
+        QMessageBox.information(self, "Cache Refresh", message)
 
     def import_media_pack(self):
         """Import a media pack from a zip file"""

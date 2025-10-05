@@ -177,6 +177,23 @@ class Settings(Base):
         return f"<Setting(key='{self.key}', value='{self.value}')>"
 
 
+class FTPMediaCache(Base):
+    """Cache of FTP media directory listings"""
+    __tablename__ = 'ftp_media_cache'
+
+    id = Column(Integer, primary_key=True)
+    directory = Column(String(500), nullable=False, index=True)  # FTP directory path
+    filename = Column(String(500), nullable=False, index=True)  # File name
+    file_size = Column(Integer)  # File size in bytes
+    media_type = Column(String(50), index=True)  # table_audio, backglass_image, etc.
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<FTPMediaCache(directory='{self.directory}', filename='{self.filename}')>"
+
+
 class DatabaseManager:
     """Database management class"""
 

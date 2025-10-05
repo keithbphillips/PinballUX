@@ -463,32 +463,34 @@ class DisplayConfigTab(QWidget):
         # Load VPX config
         vpx_config = self.vpx_manager.read_display_config(display_type)
 
-        # Position X (auto-populated from screen, read-only)
+        # Position X (auto-populated from screen, but adjustable)
         vpx_x = QSpinBox()
         vpx_x.setRange(-10000, 10000)
         vpx_x.setValue(vpx_config.get('x', 0))
-        vpx_x.setEnabled(False)  # Grey out, not changeable
         vpx_layout.addRow("X Position:", vpx_x)
 
-        # Position Y (auto-populated from screen, read-only)
+        # Position Y (auto-populated from screen, but adjustable)
         vpx_y = QSpinBox()
         vpx_y.setRange(-10000, 10000)
         vpx_y.setValue(vpx_config.get('y', 0))
-        vpx_y.setEnabled(False)  # Grey out, not changeable
         vpx_layout.addRow("Y Position:", vpx_y)
 
-        # Width (auto-populated from screen, read-only)
+        # Width (editable only for dmd and b2sdmd)
         vpx_width = QSpinBox()
         vpx_width.setRange(0, 10000)
         vpx_width.setValue(vpx_config.get('width', 1920))
-        vpx_width.setEnabled(False)  # Grey out, not changeable
+        # Only allow adjustment for regular DMD and B2SDMD
+        if display_type not in ['dmd', 'b2sdmd']:
+            vpx_width.setEnabled(False)
         vpx_layout.addRow("Width:", vpx_width)
 
-        # Height (auto-populated from screen, read-only)
+        # Height (editable only for dmd and b2sdmd)
         vpx_height = QSpinBox()
         vpx_height.setRange(0, 10000)
         vpx_height.setValue(vpx_config.get('height', 1080))
-        vpx_height.setEnabled(False)  # Grey out, not changeable
+        # Only allow adjustment for regular DMD and B2SDMD
+        if display_type not in ['dmd', 'b2sdmd']:
+            vpx_height.setEnabled(False)
         vpx_layout.addRow("Height:", vpx_height)
 
         # VPX Rotation (for displays that support it)
@@ -541,7 +543,14 @@ class DisplayConfigTab(QWidget):
 
         screen = self.screens[screen_idx]
 
-        # Update VPX position and size fields
+        # For regular DMD and B2SDMD, don't auto-populate width/height - keep existing VPX.ini values
+        # But still update X/Y position
+        if display_type in ['dmd', 'b2sdmd']:
+            widgets['vpx_x'].setValue(screen['x'])
+            widgets['vpx_y'].setValue(screen['y'])
+            return
+
+        # Update all VPX position and size fields for other displays
         widgets['vpx_x'].setValue(screen['x'])
         widgets['vpx_y'].setValue(screen['y'])
         widgets['vpx_width'].setValue(screen['width'])
