@@ -12,7 +12,14 @@ from typing import Dict, List, Tuple
 
 # Ensure we can import from the src directory
 import os
-script_dir = Path(__file__).parent.parent.parent.parent
+# Detect if we're in development (pinballux/src/...) or installed (/opt/pinballux/src/...)
+file_path = Path(__file__).resolve()
+if 'pinballux/src' in str(file_path):
+    # Development: /home/keith/PinballUX/pinballux/src/database/table_manager.py
+    script_dir = Path(__file__).parents[3]  # Go up to /home/keith/PinballUX/
+else:
+    # Installed: /opt/pinballux/src/database/table_manager.py
+    script_dir = Path(__file__).parents[2]  # Go up to /opt/pinballux/
 sys.path.insert(0, str(script_dir))
 os.chdir(script_dir)
 

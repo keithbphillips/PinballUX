@@ -10,7 +10,7 @@ override_dh_auto_install:
 	# Install main application
 	install -d debian/pinballux/opt/pinballux
 
-	# Copy pinballux directory, excluding large data files
+	# Copy pinballux directory contents (not the directory itself), excluding large data files
 	rsync -av --exclude='data/media/videos' \
 	          --exclude='data/media/audio' \
 	          --exclude='data/media/images/table' \
@@ -24,7 +24,7 @@ override_dh_auto_install:
 	          --exclude='data/roms' \
 	          --exclude='__pycache__' \
 	          --exclude='*.pyc' \
-	          pinballux debian/pinballux/opt/
+	          pinballux/ debian/pinballux/opt/pinballux/
 
 	cp setup_gui.py debian/pinballux/opt/pinballux/
 	cp table_manager.py debian/pinballux/opt/pinballux/
