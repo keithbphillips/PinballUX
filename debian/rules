@@ -12,7 +12,8 @@ override_dh_auto_install:
 
 	# Copy pinballux directory contents (not the directory itself), excluding large data files
 	rsync -av --exclude='data/media/videos' \
-	          --exclude='data/media/audio' \
+	          --exclude='data/media/audio/table' \
+	          --exclude='data/media/audio/launch' \
 	          --exclude='data/media/images/table' \
 	          --exclude='data/media/images/backglass' \
 	          --exclude='data/media/images/wheel' \
