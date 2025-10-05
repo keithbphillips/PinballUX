@@ -1249,7 +1249,7 @@ class MainWindow(QMainWindow):
     def auto_refresh_cache(self):
         """Auto-refresh cache (called from timer)"""
         if self.username_input.text() and self.password_input.text():
-            self.refresh_media_cache()
+            self.refresh_media_cache(skip_confirmation=True)
         else:
             QMessageBox.information(
                 self,
@@ -1299,7 +1299,7 @@ class MainWindow(QMainWindow):
             self.status_label.setText("✗ Scan failed")
             QMessageBox.warning(self, "Scan Error", f"Error scanning tables:\n{e}")
 
-    def refresh_media_cache(self):
+    def refresh_media_cache(self, skip_confirmation=False):
         """Refresh the FTP media cache"""
         username = self.username_input.text()
         password = self.password_input.text()
@@ -1308,15 +1308,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Please enter FTP credentials")
             return
 
-        reply = QMessageBox.question(
-            self,
-            "Refresh Media Cache",
-            "This will scan all FTP media directories and update the cache.\n\nThis may take 1-2 minutes. Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
+        if not skip_confirmation:
+            reply = QMessageBox.question(
+                self,
+                "Refresh Media Cache",
+                "This will scan all FTP media directories and update the cache.\n\nThis may take 1-2 minutes. Continue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
 
-        if reply != QMessageBox.StandardButton.Yes:
-            return
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         # Start cache scan thread
         self.cache_scan_thread = FTPCacheScanThread(username, password, self.db_manager)
