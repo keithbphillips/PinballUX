@@ -35,7 +35,7 @@ def setup_vpinmame_roms_symlink():
     logger = logging.getLogger(__name__)
 
     # Get the project roms directory
-    project_root = Path(__file__).parent.parent.parent
+    project_root = Path(__file__).parent.parent
     roms_dir = project_root / "data" / "roms"
 
     # Ensure project roms directory exists (only if writable)

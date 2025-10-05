@@ -36,6 +36,7 @@ class InputBinding:
     """Represents a binding between input and action"""
     action: InputAction
     key_code: Optional[int] = None  # PyQt6 key code
+    key_name: Optional[str] = None  # Key name (e.g., "Shift_L", "Shift_R") for modifiers
     joystick_button: Optional[int] = None  # Joystick button number
     joystick_axis: Optional[int] = None  # Joystick axis number
     joystick_axis_direction: Optional[str] = None  # 'positive' or 'negative'
@@ -70,6 +71,53 @@ class InputManager(QObject):
 
         self._initialize_pygame()
         self._setup_default_bindings()
+
+    def _get_qt_key(self, key_name: str):
+        """Convert key name string to Qt key code"""
+        from PyQt6.QtCore import Qt
+
+        # Map common key names to Qt key codes
+        key_map = {
+            # Standard keys
+            'Escape': Qt.Key.Key_Escape,
+            'Return': Qt.Key.Key_Return,
+            'Enter': Qt.Key.Key_Enter,
+            'Space': Qt.Key.Key_Space,
+            'Tab': Qt.Key.Key_Tab,
+
+            # Arrow keys
+            'Left': Qt.Key.Key_Left,
+            'Right': Qt.Key.Key_Right,
+            'Up': Qt.Key.Key_Up,
+            'Down': Qt.Key.Key_Down,
+
+            # Shift keys
+            'Shift_L': Qt.Key.Key_Shift,
+            'Shift_R': Qt.Key.Key_Shift,
+            'Shift': Qt.Key.Key_Shift,
+
+            # Control keys
+            'Control_L': Qt.Key.Key_Control,
+            'Control_R': Qt.Key.Key_Control,
+            'Control': Qt.Key.Key_Control,
+
+            # Alt keys
+            'Alt_L': Qt.Key.Key_Alt,
+            'Alt_R': Qt.Key.Key_Alt,
+            'Alt': Qt.Key.Key_Alt,
+
+            # Letter keys
+            **{chr(i): getattr(Qt.Key, f'Key_{chr(i).upper()}') for i in range(ord('a'), ord('z') + 1)},
+            **{chr(i): getattr(Qt.Key, f'Key_{chr(i)}') for i in range(ord('A'), ord('Z') + 1)},
+
+            # Number keys
+            **{str(i): getattr(Qt.Key, f'Key_{i}') for i in range(10)},
+        }
+
+        qt_key = key_map.get(key_name)
+        if qt_key is None:
+            self.logger.warning(f"Unknown key name: {key_name}, using default")
+        return qt_key
 
     def _initialize_pygame(self):
         """Initialize pygame for joystick support"""
@@ -110,27 +158,52 @@ class InputManager(QObject):
         """Setup default input bindings"""
         from PyQt6.QtCore import Qt
 
-        # Default keyboard bindings
-        self.input_bindings = [
-            # Navigation
-            InputBinding(InputAction.WHEEL_LEFT, key_code=Qt.Key.Key_Left),
-            InputBinding(InputAction.WHEEL_RIGHT, key_code=Qt.Key.Key_Right),
-            InputBinding(InputAction.SELECT, key_code=Qt.Key.Key_Return),
-            InputBinding(InputAction.SELECT, key_code=Qt.Key.Key_Enter),
-            InputBinding(InputAction.EXIT, key_code=Qt.Key.Key_Escape),
-            InputBinding(InputAction.ROTATE, key_code=Qt.Key.Key_R),  # R key for display rotation
+        # Start with empty bindings
+        self.input_bindings = []
 
-            # Game controls
-            InputBinding(InputAction.FLIPPERS, key_code=Qt.Key.Key_Space),
-            InputBinding(InputAction.NUDGE_LEFT, key_code=Qt.Key.Key_A),
-            InputBinding(InputAction.NUDGE_RIGHT, key_code=Qt.Key.Key_D),
-            InputBinding(InputAction.NUDGE_UP, key_code=Qt.Key.Key_W),
-            InputBinding(InputAction.PLUNGER, key_code=Qt.Key.Key_S),
-            InputBinding(InputAction.START, key_code=Qt.Key.Key_1),
-            InputBinding(InputAction.EXTRA_BALL, key_code=Qt.Key.Key_2),
-            InputBinding(InputAction.PAUSE, key_code=Qt.Key.Key_P),
-            InputBinding(InputAction.MENU, key_code=Qt.Key.Key_Tab),
-        ]
+        # Load keyboard bindings from config if available
+        if self.config and hasattr(self.config, 'input'):
+            self.logger.info("Loading keyboard bindings from config")
+
+            # Map config key names to Qt key codes
+            key_mapping = {
+                self.config.input.left_key: (InputAction.WHEEL_LEFT, self._get_qt_key(self.config.input.left_key)),
+                self.config.input.right_key: (InputAction.WHEEL_RIGHT, self._get_qt_key(self.config.input.right_key)),
+                self.config.input.select_key: (InputAction.SELECT, self._get_qt_key(self.config.input.select_key)),
+                self.config.input.exit_key: (InputAction.EXIT, self._get_qt_key(self.config.input.exit_key)),
+            }
+
+            for key_name, (action, qt_key) in key_mapping.items():
+                if qt_key is not None:
+                    # Store both key_code and key_name for proper matching
+                    self.input_bindings.append(InputBinding(action, key_code=qt_key, key_name=key_name))
+                    self.logger.debug(f"Mapped {key_name} -> {action}")
+
+            # Always add R for rotate (not configurable)
+            self.input_bindings.append(InputBinding(InputAction.ROTATE, key_code=Qt.Key.Key_R))
+        else:
+            # Default keyboard bindings if no config
+            self.logger.info("Using default keyboard bindings")
+            self.input_bindings = [
+                # Navigation
+                InputBinding(InputAction.WHEEL_LEFT, key_code=Qt.Key.Key_Left),
+                InputBinding(InputAction.WHEEL_RIGHT, key_code=Qt.Key.Key_Right),
+                InputBinding(InputAction.SELECT, key_code=Qt.Key.Key_Return),
+                InputBinding(InputAction.SELECT, key_code=Qt.Key.Key_Enter),
+                InputBinding(InputAction.EXIT, key_code=Qt.Key.Key_Escape),
+                InputBinding(InputAction.ROTATE, key_code=Qt.Key.Key_R),  # R key for display rotation
+
+                # Game controls
+                InputBinding(InputAction.FLIPPERS, key_code=Qt.Key.Key_Space),
+                InputBinding(InputAction.NUDGE_LEFT, key_code=Qt.Key.Key_A),
+                InputBinding(InputAction.NUDGE_RIGHT, key_code=Qt.Key.Key_D),
+                InputBinding(InputAction.NUDGE_UP, key_code=Qt.Key.Key_W),
+                InputBinding(InputAction.PLUNGER, key_code=Qt.Key.Key_S),
+                InputBinding(InputAction.START, key_code=Qt.Key.Key_1),
+                InputBinding(InputAction.EXTRA_BALL, key_code=Qt.Key.Key_2),
+                InputBinding(InputAction.PAUSE, key_code=Qt.Key.Key_P),
+                InputBinding(InputAction.MENU, key_code=Qt.Key.Key_Tab),
+            ]
 
         # Load joystick button mappings from config if available
         if self.config and hasattr(self.config, 'input') and self.config.input.joystick_buttons:
@@ -266,20 +339,56 @@ class InputManager(QObject):
                     self.logger.debug(f"Joystick {joystick_id} hat {hat_id} {direction} -> {binding.action}")
                     self.action_triggered.emit(binding.action)
 
-    def handle_key_press(self, key_code: int):
-        """Handle keyboard key press"""
+    def handle_key_press(self, key_code: int, scan_code: int = None):
+        """Handle keyboard key press
+
+        Args:
+            key_code: Qt key code from event.key()
+            scan_code: Native scan code from event.nativeScanCode() to differentiate left/right modifiers
+        """
         if not self.keyboard_enabled:
             return
 
-        self.logger.debug(f"Key pressed: {key_code}")
+        from PyQt6.QtCore import Qt
 
+        # Determine the actual key name for modifiers
+        key_name = None
+        if scan_code is not None:
+            # Check for left/right shift/control/alt using scan codes (Linux X11)
+            if key_code == Qt.Key.Key_Shift:
+                if scan_code == 50:  # Left Shift
+                    key_name = "Shift_L"
+                elif scan_code == 62:  # Right Shift
+                    key_name = "Shift_R"
+            elif key_code == Qt.Key.Key_Control:
+                if scan_code == 37:  # Left Control
+                    key_name = "Control_L"
+                elif scan_code == 105:  # Right Control
+                    key_name = "Control_R"
+            elif key_code == Qt.Key.Key_Alt:
+                if scan_code == 64:  # Left Alt
+                    key_name = "Alt_L"
+                elif scan_code == 108:  # Right Alt
+                    key_name = "Alt_R"
+
+        self.logger.debug(f"Key pressed: {key_code}, scan: {scan_code}, name: {key_name}")
+
+        # Check bindings
         for binding in self.input_bindings:
-            if binding.key_code == key_code:
-                self.logger.debug(f"Matching binding found: {binding.action}")
-                self.action_triggered.emit(binding.action)
-                return
+            # For modifier keys (Shift_L, Shift_R, etc.), match by the specific key_name
+            if key_name and key_name in ["Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"]:
+                if binding.key_name == key_name:
+                    self.logger.debug(f"Matching binding found by modifier name: {binding.action}")
+                    self.action_triggered.emit(binding.action)
+                    return
+            # For all other keys, match by key_code
+            elif not key_name or key_name not in ["Shift_L", "Shift_R", "Control_L", "Control_R", "Alt_L", "Alt_R"]:
+                if binding.key_code == key_code:
+                    self.logger.debug(f"Matching binding found by code: {binding.action}")
+                    self.action_triggered.emit(binding.action)
+                    return
 
-        self.logger.debug(f"No binding found for key: {key_code}")
+        self.logger.debug(f"No binding found for key: {key_code} ({key_name})")
 
     def add_binding(self, binding: InputBinding):
         """Add a new input binding"""

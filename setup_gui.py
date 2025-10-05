@@ -291,7 +291,44 @@ class KeyCaptureButton(QPushButton):
     def keyPressEvent(self, event):
         """Capture key press"""
         if self.capturing:
-            key = QKeySequence(event.key()).toString()
+            # Use text() to get the actual key name which includes left/right modifiers
+            key_text = event.text()
+
+            # For modifier keys and special keys, use the key name
+            if not key_text or event.key() in [Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt,
+                                                Qt.Key.Key_Escape, Qt.Key.Key_Return, Qt.Key.Key_Enter,
+                                                Qt.Key.Key_Tab, Qt.Key.Key_Space, Qt.Key.Key_Backspace,
+                                                Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down]:
+                # Get native scan code to differentiate left/right modifiers
+                scan_code = event.nativeScanCode()
+
+                # Map native scan codes for left/right shift (Linux X11)
+                if event.key() == Qt.Key.Key_Shift:
+                    if scan_code == 50:  # Left Shift
+                        key = "Shift_L"
+                    elif scan_code == 62:  # Right Shift
+                        key = "Shift_R"
+                    else:
+                        key = "Shift"
+                elif event.key() == Qt.Key.Key_Control:
+                    if scan_code == 37:  # Left Control
+                        key = "Control_L"
+                    elif scan_code == 105:  # Right Control
+                        key = "Control_R"
+                    else:
+                        key = "Control"
+                elif event.key() == Qt.Key.Key_Alt:
+                    if scan_code == 64:  # Left Alt
+                        key = "Alt_L"
+                    elif scan_code == 108:  # Right Alt
+                        key = "Alt_R"
+                    else:
+                        key = "Alt"
+                else:
+                    key = QKeySequence(event.key()).toString()
+            else:
+                key = key_text
+
             self.current_key = key
             self.setText(key)
             self.capturing = False

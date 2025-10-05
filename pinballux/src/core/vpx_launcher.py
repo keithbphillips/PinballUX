@@ -155,7 +155,7 @@ class VPXLauncher(QObject):
             return self.config.vpx.executable_path
 
         # Get project root directory (PinballUX directory)
-        project_root = Path(__file__).parent.parent.parent.parent
+        project_root = Path(__file__).parent.parent.parent
 
         # Common locations to search
         search_paths = [

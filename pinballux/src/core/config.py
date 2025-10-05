@@ -138,7 +138,7 @@ class Config:
 
     def _update_default_paths(self):
         """Update paths to use project-relative directories"""
-        project_root = Path(__file__).parents[3]  # Go up from src/core/config.py to project root
+        project_root = Path(__file__).parents[2]  # Go up from src/core/config.py to project root
 
         default_executable_path = str(project_root / "vpinball" / "VPinballX_GL")
         default_table_dir = str(project_root / "data" / "tables")
@@ -185,7 +185,7 @@ class Config:
         )
 
         # Get project root directory
-        project_root = Path(__file__).parents[3]  # Go up from src/core/config.py to project root
+        project_root = Path(__file__).parents[2]  # Go up from src/core/config.py to project root
 
         self.vpx = VPXConfig(
             executable_path=str(project_root / "vpinball" / "VPinballX_GL"),

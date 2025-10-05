@@ -142,7 +142,7 @@ def match_file_to_table(filename: str, table) -> float:
 
 def get_local_media_path(media_type: str, filename: str) -> Path:
     """Get the local path for a media file based on type"""
-    base_path = Path(project_root) / "pinballux" / "data" / "media"
+    base_path = Path(project_root) / "data" / "media"
     ext = Path(filename).suffix.lower()
 
     if media_type == 'launch_audio':
@@ -323,7 +323,8 @@ class FTPDownloadThread(QThread):
         self.table = table
         self.config_dir = config_dir
         self.db_manager = db_manager
-        self.temp_dir = Path(project_root) / "ftp_downloads_temp"
+        # Use config directory for temp downloads (user-writable)
+        self.temp_dir = Path(config_dir).parent / "ftp_downloads_temp"
 
     def run(self):
         try:
@@ -833,7 +834,7 @@ class MediaReviewWidget(QWidget):
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
         """Find existing file of the same media type, regardless of extension"""
-        base_path = Path(project_root) / "pinballux" / "data" / "media"
+        base_path = Path(project_root) / "data" / "media"
 
         # Define extension groups by media type
         video_exts = {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
@@ -1400,7 +1401,7 @@ class MainWindow(QMainWindow):
             return
 
         # Default to the media packs directory
-        packs_dir = Path(project_root) / "pinballux" / "data" / "media" / "packs"
+        packs_dir = Path(project_root) / "data" / "media" / "packs"
         packs_dir.mkdir(parents=True, exist_ok=True)
 
         # Open file dialog to select zip file
@@ -1441,7 +1442,7 @@ class MainWindow(QMainWindow):
             }
 
             imported_files = []
-            base_media_path = Path(project_root) / "pinballux" / "data" / "media"
+            base_media_path = Path(project_root) / "data" / "media"
 
             with zipfile.ZipFile(zip_path, 'r') as zip_file:
                 for file_info in zip_file.filelist:

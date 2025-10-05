@@ -1569,8 +1569,8 @@ class WheelMainWindow(QWidget):
     def keyPressEvent(self, event):
         """Handle key press events"""
         # Forward key events to input manager only - don't call super() to avoid double handling
-        self.logger.debug(f"WheelMainWindow keyPressEvent: {event.key()}")
-        self.input_manager.handle_key_press(event.key())
+        self.logger.debug(f"WheelMainWindow keyPressEvent: {event.key()}, scan: {event.nativeScanCode()}")
+        self.input_manager.handle_key_press(event.key(), event.nativeScanCode())
         # Don't call super() to prevent double handling in WheelWidget.keyPressEvent()
 
     def closeEvent(self, event):
@@ -1579,8 +1579,22 @@ class WheelMainWindow(QWidget):
         if hasattr(self, 'input_manager'):
             self.input_manager.cleanup()
 
-        # Clean up wheel widget video player
+        # Clean up wheel widget media players
         if hasattr(self, 'wheel_widget'):
-            self.wheel_widget.stop_background_video()
+            try:
+                self.wheel_widget.stop_background_video()
+                # Clean up background media player
+                if hasattr(self.wheel_widget, 'background_media_player'):
+                    self.wheel_widget.background_media_player.stop()
+                    self.wheel_widget.background_media_player.setSource(QUrl())
+                    self.wheel_widget.background_media_player.setVideoOutput(None)
+                    self.wheel_widget.background_media_player.setAudioOutput(None)
+                if hasattr(self.wheel_widget, 'background_audio_output'):
+                    self.wheel_widget.background_audio_output = None
+                if hasattr(self.wheel_widget, 'background_video_item'):
+                    self.wheel_widget.background_video_item.setParent(None)
+                    self.wheel_widget.background_video_item = None
+            except Exception as e:
+                pass  # Ignore cleanup errors
 
         super().closeEvent(event)

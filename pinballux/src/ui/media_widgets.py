@@ -84,6 +84,19 @@ class AudioPlayer(QWidget):
         if self.media_player:
             self.media_player.stop()
 
+    def cleanup(self):
+        """Clean up media player resources"""
+        try:
+            if self.media_player:
+                self.media_player.stop()
+                self.media_player.setSource(QUrl())
+                self.media_player.setAudioOutput(None)
+                self.media_player = None
+            if self.audio_output:
+                self.audio_output = None
+        except Exception as e:
+            pass  # Ignore cleanup errors
+
     def set_volume(self, volume: float):
         """Set audio volume (0.0 to 1.0)"""
         if self.audio_output:
@@ -380,6 +393,23 @@ class VideoWidget(QWidget):
         """Stop video playback"""
         if self.media_player:
             self.media_player.stop()
+
+    def cleanup(self):
+        """Clean up media player resources"""
+        try:
+            if self.media_player:
+                self.media_player.stop()
+                self.media_player.setSource(QUrl())
+                self.media_player.setVideoOutput(None)
+                self.media_player.setAudioOutput(None)
+                self.media_player = None
+            if self.audio_output:
+                self.audio_output = None
+            if self.video_widget:
+                self.video_widget.setParent(None)
+                self.video_widget = None
+        except Exception as e:
+            pass  # Ignore cleanup errors
 
     def set_volume(self, volume: float):
         """Set audio volume (0.0 to 1.0)"""

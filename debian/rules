@@ -41,6 +41,9 @@ override_dh_auto_install:
 	# Create data directories with proper structure (at /opt/pinballux/data/)
 	install -d debian/pinballux/opt/pinballux/data/tables
 	install -d debian/pinballux/opt/pinballux/data/roms
+
+	# Create vpinball directory for user installation
+	install -d debian/pinballux/opt/pinballux/vpinball
 	install -d debian/pinballux/opt/pinballux/data/media/videos/table
 	install -d debian/pinballux/opt/pinballux/data/media/videos/backglass
 	install -d debian/pinballux/opt/pinballux/data/media/videos/dmd
@@ -59,8 +62,9 @@ override_dh_auto_install:
 
 override_dh_fixperms:
 	dh_fixperms
-	# Make data directories writable by all users
+	# Make data and vpinball directories writable by all users
 	chmod -R 777 debian/pinballux/opt/pinballux/data || true
+	chmod -R 777 debian/pinballux/opt/pinballux/vpinball || true
 
 override_dh_auto_test:
 	# Skip tests
