@@ -208,7 +208,7 @@ class FTPCacheScanThread(QThread):
                 ],
                 'dmd': [
                     f"{base_path}/Real DMD Images",
-                    f"{base_path}/Real DMD Videos - Color"
+                    f"{base_path}/Real DMD Color Videos"
                 ],
                 'topper': [
                     f"{base_path}/Topper Images",
@@ -286,7 +286,7 @@ class FTPCacheScanThread(QThread):
                 session.commit()
 
             ftp.quit()
-            self.finished.emit(True, f"✓ Cache updated! {total_files} files indexed.")
+            self.finished.emit(True, f"✓ Cache updated! {total_files} files indexed.\n\nNow ready to Download Media.")
 
         except Exception as e:
             self.finished.emit(False, f"Error scanning FTP: {str(e)}")
@@ -295,6 +295,7 @@ class FTPCacheScanThread(QThread):
 class FTPDownloadThread(QThread):
     """Thread for FTP download operations"""
     progress = pyqtSignal(str)  # Status messages
+    progress_update = pyqtSignal(int, int)  # current_file, total_files
     file_downloaded = pyqtSignal(str, str, str, str)  # media_type, temp_path, ftp_filename, table_name
     finished = pyqtSignal(bool, str)  # success, message
 
@@ -410,6 +411,7 @@ class FTPDownloadThread(QThread):
 
                         if temp_path.exists():
                             # File already in cache, skip download but still add to list
+                            self.progress_update.emit(processed, total_to_download)
                             self.progress.emit(f"⚡ [{processed}/{total_to_download}] Cached: {filename}")
                             self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
                         else:
@@ -426,6 +428,9 @@ class FTPDownloadThread(QThread):
 
                                 print(f"\n[DOWNLOAD] Starting: {filename}")
                                 print(f"[DOWNLOAD] Directory: {directory}")
+
+                                self.progress_update.emit(processed, total_to_download)
+                                self.progress.emit(f"[{processed}/{total_to_download}] Downloading: {filename}")
 
                                 with open(temp_path, 'wb') as f:
                                     ftp.retrbinary(f'RETR {filename}', download_callback)
@@ -1137,7 +1142,10 @@ class MainWindow(QMainWindow):
             return
 
         # Check if media cache needs refresh
-        self.check_cache_age()
+        # If a cache refresh is triggered, abort this download
+        if self.check_cache_age():
+            self.log("Please click Download Media again after cache refresh completes")
+            return
 
         # Clear previous downloads
         self.media_review.clear_files()
@@ -1145,6 +1153,7 @@ class MainWindow(QMainWindow):
         # Start download thread
         self.download_thread = FTPDownloadThread(username, password, self.selected_table, self.config_dir, self.db_manager)
         self.download_thread.progress.connect(self.update_status)
+        self.download_thread.progress_update.connect(self.update_progress_bar)
         self.download_thread.file_downloaded.connect(self.on_file_downloaded)
         self.download_thread.finished.connect(self.download_finished)
         self.download_thread.start()
@@ -1166,7 +1175,12 @@ class MainWindow(QMainWindow):
     def on_file_downloaded(self, media_type: str, temp_path: str, ftp_filename: str, table_name: str):
         """Handle file downloaded event"""
         self.media_review.add_file(media_type, temp_path, ftp_filename, table_name)
-        self.status_label.setText(f"Downloaded: {ftp_filename}")
+
+    def update_progress_bar(self, current: int, total: int):
+        """Update progress bar with current progress"""
+        if total > 0:
+            self.progress_bar.setRange(0, total)
+            self.progress_bar.setValue(current)
 
     def stop_download(self):
         """Stop the current download"""
@@ -1183,6 +1197,7 @@ class MainWindow(QMainWindow):
         self.download_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
         self.select_table_btn.setEnabled(True)
+        self.progress_bar.setRange(0, 0)  # Reset to indeterminate for next time
         self.progress_bar.hide()
 
         if success:
@@ -1203,7 +1218,11 @@ class MainWindow(QMainWindow):
         self.progress_text.append(message)
 
     def check_cache_age(self):
-        """Check if media cache needs refresh (weekly)"""
+        """Check if media cache needs refresh (weekly)
+
+        Returns:
+            True if cache refresh was triggered, False otherwise
+        """
         from pinballux.src.database.models import Settings
         from datetime import datetime, timedelta
 
@@ -1212,19 +1231,17 @@ class MainWindow(QMainWindow):
                 last_update = session.query(Settings).filter(Settings.key == 'ftp_cache_last_update').first()
 
                 if not last_update:
-                    # No cache exists, prompt to create one
-                    reply = QMessageBox.question(
+                    # No cache exists, must create one
+                    QMessageBox.information(
                         self,
-                        "Media Cache",
-                        "No media cache found. Would you like to build the cache now?\n\n"
-                        "This will scan FTP media directories (takes 1-2 minutes) and enable fast media searches.",
-                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                        "Media Cache Required",
+                        "No media cache found. Building cache now...\n\n"
+                        "This will scan FTP media directories (takes 1-2 minutes) and enables fast media searches."
                     )
 
-                    if reply == QMessageBox.StandardButton.Yes:
-                        # Will trigger refresh after credentials are loaded
-                        QTimer.singleShot(500, self.auto_refresh_cache)
-                    return
+                    # Trigger refresh after credentials are loaded
+                    QTimer.singleShot(500, self.auto_refresh_cache)
+                    return True
 
                 # Check if cache is older than 7 days
                 last_update_time = datetime.fromisoformat(last_update.value)
@@ -1242,9 +1259,12 @@ class MainWindow(QMainWindow):
 
                     if reply == QMessageBox.StandardButton.Yes:
                         QTimer.singleShot(500, self.auto_refresh_cache)
+                        return True
 
         except Exception as e:
             self.log(f"Error checking cache age: {e}")
+
+        return False
 
     def auto_refresh_cache(self):
         """Auto-refresh cache (called from timer)"""
