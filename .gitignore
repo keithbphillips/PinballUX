@@ -81,3 +81,16 @@ pinballux/data/roms/**/*
 # Test files
 test_*.py
 !tests/
+
+# Debian packaging build artifacts
+debian/pinballux/
+debian/.debhelper/
+debian/debhelper-build-stamp
+debian/files
+debian/*.substvars
+debian/*.log
+debian/tmp/
+*.deb
+*.dsc
+*.changes
+*.buildinfo

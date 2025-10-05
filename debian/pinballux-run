@@ -1,0 +1,5 @@
+#!/bin/bash
+# PinballUX main application wrapper script
+
+cd /opt/pinballux
+exec python3 run_pinballux.py "$@"

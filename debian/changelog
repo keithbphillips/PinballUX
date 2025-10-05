@@ -1,0 +1,13 @@
+pinballux (0.1.0-1) unstable; urgency=medium
+
+  * Initial release
+  * Multi-monitor support for pinball cabinet displays
+  * VPX table management and launching
+  * Media integration with video, image, and audio support
+  * Keyboard and joystick input handling
+  * FTP media downloads from gameex.com
+  * Setup GUI for configuration
+  * Table Manager for media management
+  * Automated VPinball download and installation
+
+ -- Keith Phillips <keith@example.com>  Sun, 05 Oct 2025 00:00:00 +0000

@@ -1,0 +1,45 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@
+
+override_dh_auto_build:
+	# No build step needed
+
+override_dh_auto_install:
+	# Install main application
+	install -d debian/pinballux/opt/pinballux
+
+	# Copy pinballux directory, excluding large data files
+	rsync -av --exclude='data/media/videos' \
+	          --exclude='data/media/audio' \
+	          --exclude='data/media/images' \
+	          --exclude='data/media/packs' \
+	          --exclude='data/packs' \
+	          --exclude='data/tables' \
+	          --exclude='data/roms' \
+	          --exclude='__pycache__' \
+	          --exclude='*.pyc' \
+	          pinballux debian/pinballux/opt/
+
+	cp setup_gui.py debian/pinballux/opt/pinballux/
+	cp table_manager.py debian/pinballux/opt/pinballux/
+	cp run_pinballux.py debian/pinballux/opt/pinballux/
+	cp requirements.txt debian/pinballux/opt/pinballux/
+	cp README.md debian/pinballux/opt/pinballux/
+
+	# Install wrapper scripts
+	install -d debian/pinballux/usr/bin
+	install -m 755 debian/pinballux-setup debian/pinballux/usr/bin/pinballux-setup
+	install -m 755 debian/pinballux-manager debian/pinballux/usr/bin/pinballux-manager
+	install -m 755 debian/pinballux-run debian/pinballux/usr/bin/pinballux
+
+	# Install desktop entry
+	install -d debian/pinballux/usr/share/applications
+	install -m 644 debian/pinballux.desktop debian/pinballux/usr/share/applications/
+
+override_dh_auto_test:
+	# Skip tests
+
+override_dh_auto_clean:
+	# Nothing to clean

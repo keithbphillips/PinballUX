@@ -1,0 +1,56 @@
+#!/bin/bash
+# Post-installation script for PinballUX
+
+set -e
+
+case "$1" in
+    configure)
+        # Create data directories with proper permissions
+        mkdir -p /opt/pinballux/pinballux/data/tables
+        mkdir -p /opt/pinballux/pinballux/data/media/videos/table
+        mkdir -p /opt/pinballux/pinballux/data/media/videos/backglass
+        mkdir -p /opt/pinballux/pinballux/data/media/videos/dmd
+        mkdir -p /opt/pinballux/pinballux/data/media/videos/real_dmd_color
+        mkdir -p /opt/pinballux/pinballux/data/media/videos/topper
+        mkdir -p /opt/pinballux/pinballux/data/media/images/table
+        mkdir -p /opt/pinballux/pinballux/data/media/images/backglass
+        mkdir -p /opt/pinballux/pinballux/data/media/images/wheel
+        mkdir -p /opt/pinballux/pinballux/data/media/images/dmd
+        mkdir -p /opt/pinballux/pinballux/data/media/images/topper
+        mkdir -p /opt/pinballux/pinballux/data/media/audio/table
+        mkdir -p /opt/pinballux/pinballux/data/media/audio/launch
+        mkdir -p /opt/pinballux/pinballux/data/media/packs
+        mkdir -p /opt/pinballux/pinballux/data/roms
+
+        # Set permissions so users can write to data directories
+        chmod -R 777 /opt/pinballux/pinballux/data
+
+        echo ""
+        echo "======================================"
+        echo "PinballUX installed successfully!"
+        echo "======================================"
+        echo ""
+        echo "To get started:"
+        echo "  1. Run 'pinballux-setup' to configure displays and settings"
+        echo "  2. Run 'pinballux-manager' to scan tables and download media"
+        echo "  3. Run 'pinballux' to launch the frontend"
+        echo ""
+        echo "Configuration will be stored in: ~/.config/pinballux/"
+        echo "Place VPX tables in: /opt/pinballux/pinballux/data/tables/"
+        echo ""
+        echo "See /opt/pinballux/README.md for full documentation"
+        echo ""
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

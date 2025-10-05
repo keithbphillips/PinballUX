@@ -1,0 +1,5 @@
+#!/bin/bash
+# PinballUX Setup GUI wrapper script
+
+cd /opt/pinballux
+exec python3 setup_gui.py "$@"

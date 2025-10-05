@@ -1,0 +1,32 @@
+Source: pinballux
+Section: games
+Priority: optional
+Maintainer: Keith Phillips <keith@example.com>
+Build-Depends: debhelper (>= 10)
+Standards-Version: 4.5.0
+Homepage: https://github.com/keithbphillips/PinballUX
+
+Package: pinballux
+Architecture: all
+Depends: ${misc:Depends},
+         python3 (>= 3.8),
+         python3-pyqt6,
+         python3-pyqt6.qtmultimedia,
+         python3-pyqt6.qtmultimediawidgets,
+         python3-pygame,
+         python3-sqlalchemy,
+         python3-requests,
+         libxcb-cursor0
+Description: Visual Pinball frontend for Linux with multi-monitor support
+ PinballUX is a Visual Pinball frontend for Linux inspired by PinballX.
+ It provides multi-monitor support for Playfield, Backglass, DMD, FullDMD,
+ and Topper displays.
+ .
+ Features include:
+  - Multi-monitor display management
+  - VPX table launching and management
+  - Media integration (videos, images, audio)
+  - Keyboard and joystick/gamepad support
+  - Table database with metadata
+  - FTP media downloads from gameex.com
+  - Automated VPinball installation

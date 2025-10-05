@@ -1,0 +1,83 @@
+# Building PinballUX Debian Package
+
+## Prerequisites
+
+Install the required build tools:
+
+```bash
+sudo apt install debhelper devscripts
+```
+
+## Building the Package
+
+From the PinballUX project root directory:
+
+```bash
+# Build the package
+dpkg-buildpackage -us -uc -b
+
+# Or using debuild
+debuild -us -uc -b
+```
+
+This will create a `.deb` file in the parent directory.
+
+## Installing the Package
+
+```bash
+cd ..
+sudo dpkg -i pinballux_0.1.0-1_all.deb
+
+# If dependencies are missing, fix them with:
+sudo apt install -f
+```
+
+## Testing the Installation
+
+After installation:
+
+```bash
+# Run setup GUI
+pinballux-setup
+
+# Run table manager
+pinballux-manager
+
+# Run PinballUX
+pinballux
+```
+
+## Uninstalling
+
+```bash
+sudo apt remove pinballux
+```
+
+## Package Contents
+
+The package installs:
+- Application files to `/opt/pinballux/`
+- Wrapper scripts to `/usr/bin/` (pinballux, pinballux-setup, pinballux-manager)
+- Desktop entry to `/usr/share/applications/`
+- User config to `~/.config/pinballux/` (created on first run)
+
+## Creating a PPA Repository
+
+To distribute via PPA:
+
+1. Sign the package:
+   ```bash
+   debuild -S -sa
+   ```
+
+2. Upload to Launchpad:
+   ```bash
+   dput ppa:your-username/pinballux ../pinballux_0.1.0-1_source.changes
+   ```
+
+## Notes
+
+- VPinball is NOT included in the package
+- Users can download VPinball using the Setup GUI's download feature
+- The package sets up all necessary data directories
+- All dependencies are automatically installed from Ubuntu repositories
