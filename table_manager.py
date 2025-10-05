@@ -990,9 +990,6 @@ class MainWindow(QMainWindow):
         self.init_ui()
         self.load_saved_credentials()
 
-        # Check if media cache needs refresh
-        self.check_cache_age()
-
         # Offer to scan tables on startup
         self.scan_tables_on_startup()
 
@@ -1138,6 +1135,9 @@ class MainWindow(QMainWindow):
         if not self.selected_table:
             QMessageBox.warning(self, "Error", "Please select a table first")
             return
+
+        # Check if media cache needs refresh
+        self.check_cache_age()
 
         # Clear previous downloads
         self.media_review.clear_files()
@@ -1293,8 +1293,6 @@ class MainWindow(QMainWindow):
 
             self.log("✓ Table scan complete")
             self.status_label.setText("✓ Table scan complete")
-
-            QMessageBox.information(self, "Scan Complete", "Table scan completed successfully!")
 
         except Exception as e:
             self.log(f"✗ Error scanning tables: {e}")
