@@ -853,6 +853,8 @@ class MediaReviewWidget(QWidget):
             self.downloaded_video_widget.hide()
             self.downloaded_image_label.show()
             self.downloaded_image_label.setText(f"🔊 Click to play: {file.ftp_filename}")
+            # Reconnect audio output (disconnected during cleanup)
+            self.media_player.setAudioOutput(self.audio_output)
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
         """Find existing file of the same media type, regardless of extension"""
@@ -929,6 +931,8 @@ class MediaReviewWidget(QWidget):
                 self.existing_video_widget.hide()
                 self.existing_image_label.show()
                 self.existing_image_label.setText(f"🔊 Click to play existing: {local_path.name}")
+                # Reconnect audio output (disconnected during cleanup)
+                self.existing_media_player.setAudioOutput(self.existing_audio_output)
         else:
             # No existing file
             self.existing_video_widget.hide()
@@ -941,6 +945,8 @@ class MediaReviewWidget(QWidget):
         if self.current_file:
             ext = self.current_file.temp_path.suffix.lower()
             if ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
+                # Ensure audio output is connected
+                self.media_player.setAudioOutput(self.audio_output)
                 self.media_player.setSource(QUrl.fromLocalFile(str(self.current_file.temp_path)))
                 self.media_player.play()
 
@@ -952,6 +958,8 @@ class MediaReviewWidget(QWidget):
             if local_path:
                 ext = local_path.suffix.lower()
                 if ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
+                    # Ensure audio output is connected
+                    self.existing_media_player.setAudioOutput(self.existing_audio_output)
                     self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
                     self.existing_media_player.play()
 
