@@ -723,6 +723,25 @@ class MediaReviewWidget(QWidget):
         layout.addWidget(splitter)
         self.setLayout(layout)
 
+    def cleanup_media_players(self):
+        """Properly cleanup media players to prevent resource leaks"""
+        try:
+            # Cleanup downloaded media player
+            if self.media_player:
+                self.media_player.stop()
+                self.media_player.setSource(QUrl())
+                self.media_player.setVideoOutput(None)
+                self.media_player.setAudioOutput(None)
+
+            # Cleanup existing media player
+            if self.existing_media_player:
+                self.existing_media_player.stop()
+                self.existing_media_player.setSource(QUrl())
+                self.existing_media_player.setVideoOutput(None)
+                self.existing_media_player.setAudioOutput(None)
+        except Exception as e:
+            pass  # Ignore cleanup errors
+
     def add_file(self, media_type: str, temp_path: str, ftp_filename: str, table_name: str):
         """Add a downloaded file to the review list"""
         file = DownloadedFile(media_type, Path(temp_path), ftp_filename, table_name)
@@ -731,9 +750,8 @@ class MediaReviewWidget(QWidget):
 
     def clear_files(self):
         """Clear all files from the review list"""
-        # Stop any playing media
-        self.media_player.stop()
-        self.existing_media_player.stop()
+        # Properly cleanup media players
+        self.cleanup_media_players()
 
         # Clear files list
         self.files.clear()
@@ -795,9 +813,8 @@ class MediaReviewWidget(QWidget):
         self.current_file = file
         self.save_btn.setEnabled(file.status == "pending")
 
-        # Stop any playing media
-        self.media_player.stop()
-        self.existing_media_player.stop()
+        # Properly cleanup before loading new media
+        self.cleanup_media_players()
 
         # Show downloaded file preview
         self.show_downloaded_preview(file)
@@ -813,6 +830,9 @@ class MediaReviewWidget(QWidget):
             # Video
             self.downloaded_image_label.hide()
             self.downloaded_video_widget.show()
+            # Ensure video/audio outputs are connected before setting source
+            self.media_player.setVideoOutput(self.downloaded_video_widget)
+            self.media_player.setAudioOutput(self.audio_output)
             self.media_player.setSource(QUrl.fromLocalFile(str(file.temp_path)))
             self.media_player.play()
         elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
@@ -886,6 +906,9 @@ class MediaReviewWidget(QWidget):
                 # Video
                 self.existing_image_label.hide()
                 self.existing_video_widget.show()
+                # Ensure video/audio outputs are connected before setting source
+                self.existing_media_player.setVideoOutput(self.existing_video_widget)
+                self.existing_media_player.setAudioOutput(self.existing_audio_output)
                 self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
                 self.existing_media_player.play()
             elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
@@ -996,6 +1019,11 @@ class MediaReviewWidget(QWidget):
             self.save_btn.setEnabled(False)
 
             QMessageBox.information(self, "Deleted", f"Deleted {deleted_count} cached files")
+
+    def closeEvent(self, event):
+        """Handle widget close event - cleanup media players"""
+        self.cleanup_media_players()
+        event.accept()
 
 
 class MainWindow(QMainWindow):
@@ -1547,6 +1575,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         """Handle window close event"""
+        # Cleanup media players first
+        if hasattr(self, 'media_review'):
+            self.media_review.cleanup_media_players()
+
         self.scan_tables_on_exit()
         event.accept()
 
