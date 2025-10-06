@@ -3,7 +3,7 @@ PinballX-style wheel widget for table selection
 """
 
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGraphicsView, QGraphicsScene, QGraphicsOpacityEffect
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRectF, QSizeF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect, pyqtProperty
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRectF, QSizeF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect, pyqtProperty, QUrl
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QBrush, QLinearGradient, QPen, QPainterPath, QTransform
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
@@ -749,8 +749,6 @@ class WheelWidget(QWidget):
             return
 
         try:
-            from PyQt6.QtCore import QUrl
-
             # Clear previous source before loading new video
             self.background_media_player.stop()
             self.background_media_player.setSource(QUrl())
@@ -778,8 +776,6 @@ class WheelWidget(QWidget):
             return
 
         try:
-            from PyQt6.QtGui import QPixmap
-
             # Stop video if playing and clear source
             self.background_media_player.stop()
             self.background_media_player.setSource(QUrl())
