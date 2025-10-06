@@ -50,9 +50,8 @@ class AudioPlayer(QWidget):
                 logger.error(f"Audio file not found: {audio_path}")
                 return False
 
-            # Clear previous source before loading new audio
+            # Stop current playback - GStreamer will handle source replacement
             self.media_player.stop()
-            self.media_player.setSource(QUrl())
 
             self.current_audio_path = audio_path
             media_url = QUrl.fromLocalFile(str(Path(audio_path).resolve()))
@@ -327,9 +326,8 @@ class VideoWidget(QWidget):
                 logger.error(f"Video file not found: {video_path}")
                 return False
 
-            # Clear previous source before loading new video
+            # Stop current playback - GStreamer will handle source replacement
             self.media_player.stop()
-            self.media_player.setSource(QUrl())
 
             self.current_video_path = video_path
             media_url = QUrl.fromLocalFile(str(Path(video_path).resolve()))
