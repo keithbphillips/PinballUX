@@ -602,6 +602,7 @@ class MediaReviewWidget(QWidget):
         self.current_file: Optional[DownloadedFile] = None
         self.media_player = QMediaPlayer()
         self.audio_output = QAudioOutput()
+        self.audio_output.setVolume(1.0)  # Set volume to 100%
         self.media_player.setAudioOutput(self.audio_output)
 
         self.init_ui()
@@ -691,6 +692,7 @@ class MediaReviewWidget(QWidget):
 
         self.existing_media_player = QMediaPlayer()
         self.existing_audio_output = QAudioOutput()
+        self.existing_audio_output.setVolume(1.0)  # Set volume to 100%
         self.existing_media_player.setAudioOutput(self.existing_audio_output)
         self.existing_media_player.setVideoOutput(self.existing_video_widget)
 
