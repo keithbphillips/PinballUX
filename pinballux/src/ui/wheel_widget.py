@@ -1496,10 +1496,11 @@ class WheelMainWindow(QWidget):
         if self.monitor_manager:
             self.monitor_manager.hide_loading("backglass")
 
-        # Stop launch audio when table actually launches so VPX sounds can be heard
+        # Let launch audio play for 3 seconds before stopping it
+        # This allows the user to hear the launch sound before VPX audio takes over
         if self.audio_player.is_playing():
-            self.audio_player.stop()
-            self.logger.debug("Stopped launch audio for VPX gameplay")
+            QTimer.singleShot(3000, lambda: self._stop_launch_audio_if_playing())
+            self.logger.debug("Will stop launch audio in 3 seconds")
 
         if self.monitor_manager:
             # Blank DMD screen - just black, no text
@@ -1516,6 +1517,12 @@ class WheelMainWindow(QWidget):
             #     'backglass_image': '',
             #     'backglass_video': ''
             # })
+
+    def _stop_launch_audio_if_playing(self):
+        """Stop launch audio if still playing (called after delay)"""
+        if self.audio_player.is_playing():
+            self.audio_player.stop()
+            self.logger.debug("Stopped launch audio after delay")
 
     def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
         """Handle table exit - restore displays"""
