@@ -742,6 +742,7 @@ class WheelWidget(QWidget):
         if not video_path or not Path(video_path).exists():
             # Stop any current video and show default background
             self.background_media_player.stop()
+            self.background_media_player.setSource(QUrl())
             self.background_video_item.setVisible(False)
             self.default_background_proxy.setVisible(True)
             self.default_background.setText("No Media Available")
@@ -749,6 +750,10 @@ class WheelWidget(QWidget):
 
         try:
             from PyQt6.QtCore import QUrl
+
+            # Clear previous source before loading new video
+            self.background_media_player.stop()
+            self.background_media_player.setSource(QUrl())
 
             # Load and play the video
             self.background_media_player.setSource(QUrl.fromLocalFile(video_path))
@@ -775,8 +780,9 @@ class WheelWidget(QWidget):
         try:
             from PyQt6.QtGui import QPixmap
 
-            # Stop video if playing
+            # Stop video if playing and clear source
             self.background_media_player.stop()
+            self.background_media_player.setSource(QUrl())
             self.background_video_item.setVisible(False)
 
             # Load and display the image in the default background label
@@ -816,6 +822,7 @@ class WheelWidget(QWidget):
     def stop_background_media(self):
         """Stop background video/image playback"""
         self.background_media_player.stop()
+        self.background_media_player.setSource(QUrl())
         self.background_video_item.setVisible(False)
         self.default_background.clear()
         self.default_background_proxy.setVisible(True)
