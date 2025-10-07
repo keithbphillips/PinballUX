@@ -40,11 +40,13 @@ import configparser
 # Import the gamecontroller manager
 try:
     from gamecontroller_manager import GameControllerManager
+    from dmd_position_calculator import DMDPositionCalculator
 except ImportError:
     # If not in Python path, try relative import
     import sys
     sys.path.insert(0, str(Path(__file__).parent))
     from gamecontroller_manager import GameControllerManager
+    from dmd_position_calculator import DMDPositionCalculator
 
 
 class VPXIniManager:
@@ -413,6 +415,7 @@ class DisplayConfigTab(QWidget):
         super().__init__()
         self.config = config
         self.vpx_manager = VPXIniManager()
+        self.dmd_calculator = DMDPositionCalculator()
         self.screens = self._detect_screens()
         self.init_ui()
 
@@ -558,6 +561,18 @@ class DisplayConfigTab(QWidget):
                 vpx_rotation.setCurrentIndex([0, 90, 180, 270].index(vpx_rot_value))
             vpx_layout.addRow("VPX Rotation:", vpx_rotation)
 
+        # Auto-Position button for DMD displays
+        if 'dmd' in display_type:
+            auto_pos_layout = QHBoxLayout()
+            auto_pos_btn = QPushButton("🎯 Auto-Position DMD")
+            auto_pos_btn.setToolTip("Automatically center DMD in lower part of screen")
+            auto_pos_btn.clicked.connect(
+                lambda checked=False, dt=display_type: self._auto_position_dmd(dt)
+            )
+            auto_pos_layout.addWidget(auto_pos_btn)
+            auto_pos_layout.addStretch()
+            vpx_layout.addRow("", auto_pos_layout)
+
         vpx_group.setLayout(vpx_layout)
         main_layout.addWidget(vpx_group)
 
@@ -610,6 +625,68 @@ class DisplayConfigTab(QWidget):
         widgets['vpx_y'].setValue(screen['y'])
         widgets['vpx_width'].setValue(screen['width'])
         widgets['vpx_height'].setValue(screen['height'])
+
+    def _auto_position_dmd(self, display_type: str):
+        """Automatically position DMD in the lower part of the screen"""
+        widgets = self.display_widgets.get(display_type)
+        if not widgets:
+            return
+
+        # Get selected screen info
+        screen_idx = widgets['screen_combo'].currentData()
+        if screen_idx is None or screen_idx >= len(self.screens):
+            QMessageBox.warning(
+                self,
+                "No Screen Selected",
+                "Please select a screen first before auto-positioning the DMD."
+            )
+            return
+
+        screen = self.screens[screen_idx]
+
+        # Calculate DMD position based on display type
+        dmd_type_map = {
+            'dmd': 'classic',      # PinMAME DMD - classic 128x32 ratio
+            'fulldmd': 'classic',  # FlexDMD - can use classic or wide
+            'b2sdmd': 'classic',   # B2S DMD - classic ratio
+        }
+
+        dmd_aspect = dmd_type_map.get(display_type, 'classic')
+
+        # Get cabinet configs which include optimal positioning
+        cabinet_configs = self.dmd_calculator.calculate_for_cabinet_screens(
+            screen['width'],
+            screen['height'],
+            dmd_type=dmd_aspect
+        )
+
+        # Get config for this display type
+        dmd_config = cabinet_configs.get(display_type)
+        if not dmd_config:
+            QMessageBox.warning(
+                self,
+                "Calculation Error",
+                f"Could not calculate position for {display_type}"
+            )
+            return
+
+        # Update the widgets with calculated values
+        # Add screen offset to the calculated position
+        widgets['vpx_x'].setValue(screen['x'] + dmd_config.x)
+        widgets['vpx_y'].setValue(screen['y'] + dmd_config.y)
+        widgets['vpx_width'].setValue(dmd_config.width)
+        widgets['vpx_height'].setValue(dmd_config.height)
+
+        # Show confirmation
+        QMessageBox.information(
+            self,
+            "DMD Auto-Positioned",
+            f"DMD positioned at:\n"
+            f"  Position: ({dmd_config.x}, {dmd_config.y}) on screen\n"
+            f"  Size: {dmd_config.width}x{dmd_config.height}\n"
+            f"  Centered horizontally in lower portion of screen\n\n"
+            f"Click 'Save Configuration' to apply changes."
+        )
 
     def save_config(self):
         """Save display configuration to both PinballUX and VPinballX.ini"""
