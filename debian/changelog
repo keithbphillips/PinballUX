@@ -1,3 +1,13 @@
+pinballux (0.2.0-1) unstable; urgency=medium
+
+  * Add automatic joystick GUID normalization for VPinball compatibility
+  * Add DMD auto-positioning with one-click centering and sizing
+  * Improved joystick configuration with SDL gamepad mapping
+  * Resolution-aware DMD scaling for cabinet displays
+  * Multi-monitor DMD positioning support
+
+ -- Keith Phillips <keith@example.com>  Tue, 07 Oct 2025 12:30:00 -0500
+
 pinballux (0.1.0-1) unstable; urgency=medium
 
   * Initial release
