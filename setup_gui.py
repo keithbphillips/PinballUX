@@ -1176,10 +1176,8 @@ class JoystickConfigTab(QWidget):
     def _save_to_gamecontroller_db(self):
         """Save joystick mappings to SDL gamecontroller database"""
         try:
-            # Ensure a VPinball-compatible reference mapping exists with correct GUID
-            # This is simpler than trying to generate from button config since
-            # VPinball has specific expectations about SDL button name mappings
-            success = self.gc_manager.ensure_default_mapping(use_reference=True)
+            # Generate mapping from actual button configuration
+            success = self.gc_manager.update_from_button_mappings(self.config.input.joystick_buttons)
 
             if success:
                 print(f"✓ VPinball-compatible gamecontroller mapping saved")
