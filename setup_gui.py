@@ -37,6 +37,15 @@ import shutil
 from datetime import datetime
 import configparser
 
+# Import the gamecontroller manager
+try:
+    from gamecontroller_manager import GameControllerManager
+except ImportError:
+    # If not in Python path, try relative import
+    import sys
+    sys.path.insert(0, str(Path(__file__).parent))
+    from gamecontroller_manager import GameControllerManager
+
 
 class VPXIniManager:
     """Manager for reading/writing VPinballX.ini files"""
@@ -923,6 +932,7 @@ class JoystickConfigTab(QWidget):
         super().__init__()
         self.config = config
         self.vpx_manager = VPXIniManager()
+        self.gc_manager = GameControllerManager()
         self.init_ui()
 
     def init_ui(self):
@@ -997,8 +1007,11 @@ class JoystickConfigTab(QWidget):
             if btn_num >= 0:
                 self.config.input.joystick_buttons[action] = btn_num
 
-        # Also save to VPinballX.ini
+        # Save to VPinballX.ini
         self._save_to_vpx_ini()
+
+        # Save to gamecontroller database for SDL/VPinball
+        self._save_to_gamecontroller_db()
 
     def _save_to_vpx_ini(self):
         """Save joystick button mappings to VPinballX.ini"""
@@ -1082,6 +1095,28 @@ class JoystickConfigTab(QWidget):
         except Exception as e:
             # Silently fail - VPX config is optional
             pass
+
+    def _save_to_gamecontroller_db(self):
+        """Save joystick mappings to SDL gamecontroller database"""
+        try:
+            # Ensure a VPinball-compatible reference mapping exists with correct GUID
+            # This is simpler than trying to generate from button config since
+            # VPinball has specific expectations about SDL button name mappings
+            success = self.gc_manager.ensure_default_mapping(use_reference=True)
+
+            if success:
+                print(f"✓ VPinball-compatible gamecontroller mapping saved")
+                return True
+            else:
+                print("⚠ Could not save gamecontroller mapping (no joystick detected?)")
+                return False
+
+        except Exception as e:
+            # Don't fail the entire save if this doesn't work
+            print(f"Warning: Could not update gamecontroller database: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
 
 
 class AudioConfigTab(QWidget):
@@ -1175,10 +1210,16 @@ class SetupWindow(QMainWindow):
             if vpx_path.exists():
                 vpx_msg = f"\n\nVPinballX.ini updated:\n{vpx_path}\n(Display positions, joystick mappings)"
 
+            # Check if gamecontroller db was updated
+            gc_path = Path.home() / ".vpinball" / "gamecontrollerdb.txt"
+            gc_msg = ""
+            if gc_path.exists():
+                gc_msg = f"\n\ngamecontrollerdb.txt updated:\n{gc_path}\n(Joystick GUID and SDL mappings)"
+
             QMessageBox.information(
                 self,
                 "Success",
-                f"Configuration saved successfully!\n\nPinballUX config:\n{self.config.config_file}{vpx_msg}"
+                f"Configuration saved successfully!\n\nPinballUX config:\n{self.config.config_file}{vpx_msg}{gc_msg}"
             )
 
         except Exception as e:
