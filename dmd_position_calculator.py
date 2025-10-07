@@ -31,11 +31,12 @@ class DMDPositionCalculator:
     }
 
     # Default DMD sizes based on screen height
+    # Sized for cabinet DMD screens - larger for better visibility
     DMD_SCALE_FACTORS = {
-        1080: 3.0,  # 1080p: DMD scaled 3x
-        1200: 3.5,  # 1200p: DMD scaled 3.5x
-        1440: 4.0,  # 1440p: DMD scaled 4x
-        2160: 6.0,  # 4K: DMD scaled 6x
+        1080: 11.0,  # 1080p: DMD scaled 11x (128x32 -> ~1408x352)
+        1200: 12.0,  # 1200p: DMD scaled 12x
+        1440: 14.0,  # 1440p: DMD scaled 14x
+        2160: 20.0,  # 4K: DMD scaled 20x
     }
 
     def __init__(self):
@@ -80,8 +81,8 @@ class DMDPositionCalculator:
         dmd_height = int(base_height * scale)
 
         # Ensure DMD fits on screen with some margin
-        max_width = int(screen_width * 0.9)  # 90% of screen width max
-        max_height = int(screen_height * 0.25)  # 25% of screen height max
+        max_width = int(screen_width * 0.9)   # 90% of screen width max
+        max_height = int(screen_height * 0.45) # 45% of screen height max (allows ~486px for 1080p)
 
         if dmd_width > max_width:
             # Scale down to fit width
