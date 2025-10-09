@@ -631,9 +631,12 @@ class DisplayConfigTab(QWidget):
                 screen['index']
             )
 
-        # Set current screen
-        if current and current.screen_number < len(self.screens):
-            screen_combo.setCurrentIndex(current.screen_number)
+        # Set current screen by finding the combo index that matches screen_number
+        if current:
+            for i in range(screen_combo.count()):
+                if screen_combo.itemData(i) == current.screen_number:
+                    screen_combo.setCurrentIndex(i)
+                    break
         ux_layout.addRow("Screen:", screen_combo)
 
         # Rotation
@@ -774,11 +777,10 @@ class DisplayConfigTab(QWidget):
         if screen is None:
             return
 
-        # For regular DMD and B2SDMD, don't auto-populate width/height - keep existing VPX.ini values
-        # But still update X/Y position
+        # For regular DMD and B2SDMD, don't auto-populate any values
+        # These displays use manual configuration or Auto-Position button
+        # Updating x/y here would overwrite auto-positioned values
         if display_type in ['dmd', 'b2sdmd']:
-            widgets['vpx_x'].setValue(screen['x'])
-            widgets['vpx_y'].setValue(screen['y'])
             return
 
         # Update all VPX position and size fields for other displays
