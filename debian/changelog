@@ -1,3 +1,16 @@
+pinballux (0.2.1-1) unstable; urgency=medium
+
+  * Fix FullDMD displaying on playfield instead of dedicated DMD screen
+  * Fix auto-positioned DMD settings being lost when reopening setup
+  * Fix plunger button not working due to incorrect SDL mapping
+  * Fix screen detection with non-sequential screen numbering
+  * Fix ScreenRes.txt writing to wrong directory
+  * Fix display position overrides not being saved/loaded
+  * Add B2SDMD config writing for B2S Server compatibility
+  * Add duplicate button mapping detection with warnings
+
+ -- Keith Phillips <keith@example.com>  Wed, 08 Oct 2025 21:00:00 -0500
+
 pinballux (0.2.0-1) unstable; urgency=medium
 
   * Add automatic joystick GUID normalization for VPinball compatibility

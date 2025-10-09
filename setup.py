@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as fh:
 
 setup(
     name="pinballux",
-    version="0.1.0",
+    version="0.2.1",
     author="Keith",
     description="A Visual Pinball frontend for Linux with multi-monitor support",
     long_description=long_description,
