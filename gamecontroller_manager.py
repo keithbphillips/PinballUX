@@ -128,19 +128,28 @@ class GameControllerManager:
             'START': 'start',                    # VPX maps start to start game
             'MENU': 'a',                         # VPX may map 'a' to add credit/menu
             'EXIT_TABLE': 'x',                   # VPX may map 'x' to exit
-            'PLUNGER': 'dpdown',                 # VPX often maps dpdown to launch
+            'PLUNGER': 'rightstick',             # VPX maps rightstick to plunger/launch
             'LEFT_MAGNASAVE': 'y',               # Additional buttons
             'RIGHT_MAGNASAVE': 'back',           # VPX back button
-            'SELECT': 'rightstick',              # Additional action
         }
 
         # Build mapping string parts
+        # Track which buttons have been mapped to avoid duplicates
+        mapped_buttons = {}
         mappings = []
+
         for action, sdl_button in action_to_sdl.items():
             if action in button_mappings and button_mappings[action] >= 0:
                 button_num = button_mappings[action]
+
+                # Skip if this button is already mapped to avoid conflicts
+                if button_num in mapped_buttons:
+                    print(f"  ⚠ Skipping {action} (button {button_num}) - already mapped to {mapped_buttons[button_num]}")
+                    continue
+
                 # SDL format: buttonname:bN where N is the button index
                 mappings.append(f"{sdl_button}:b{button_num}")
+                mapped_buttons[button_num] = sdl_button
 
         if not mappings:
             return None
