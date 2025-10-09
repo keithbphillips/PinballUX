@@ -1,3 +1,11 @@
+pinballux (0.2.2-1) unstable; urgency=medium
+
+  * Fix DMD auto-position values being overwritten by screen selection changes
+  * Fix screen combo initialization selecting wrong screen on load
+  * Preserve auto-positioned DMD coordinates when saving configuration
+
+ -- Keith Phillips <keith@example.com>  Thu, 09 Oct 2025 15:00:00 -0500
+
 pinballux (0.2.1-1) unstable; urgency=medium
 
   * Fix FullDMD displaying on playfield instead of dedicated DMD screen
