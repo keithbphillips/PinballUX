@@ -316,13 +316,14 @@ class FTPDownloadThread(QThread):
     file_downloaded = pyqtSignal(str, str, str, str)  # media_type, temp_path, ftp_filename, table_name
     finished = pyqtSignal(bool, str)  # success, message
 
-    def __init__(self, username: str, password: str, table, config_dir: Path, db_manager: DatabaseManager):
+    def __init__(self, username: str, password: str, table, config_dir: Path, db_manager: DatabaseManager, selected_categories: List[str] = None):
         super().__init__()
         self.username = username
         self.password = password
         self.table = table
         self.config_dir = config_dir
         self.db_manager = db_manager
+        self.selected_categories = selected_categories if selected_categories else []
         # Use config directory for temp downloads (user-writable)
         self.temp_dir = Path(config_dir).parent / "ftp_downloads_temp"
 
@@ -371,6 +372,10 @@ class FTPDownloadThread(QThread):
                     if len(table_name_base) >= 3 and len(file_base) >= 3:
                         if file_base[:3] != table_name_base[:3]:
                             continue
+
+                    # Skip if category not selected
+                    if self.selected_categories and cached_file.media_type not in self.selected_categories:
+                        continue
 
                     # Now do full similarity matching
                     score = match_file_to_table(cached_file.filename, self.table)
@@ -1089,6 +1094,9 @@ class MainWindow(QMainWindow):
 
         # Table selection
         table_group = QGroupBox("Table Selection")
+        table_main_layout = QVBoxLayout()
+
+        # Top row - table selection
         table_layout = QHBoxLayout()
 
         self.select_table_btn = QPushButton("Select Table...")
@@ -1100,28 +1108,76 @@ class MainWindow(QMainWindow):
         table_layout.addWidget(self.selected_table_label)
 
         table_layout.addStretch()
+        table_main_layout.addLayout(table_layout)
+
+        # Media category checkboxes
+        media_group = QGroupBox("Media Categories to Download")
+        media_checkboxes_layout = QHBoxLayout()
+
+        self.media_category_checkboxes = {}
+        media_categories = [
+            ('backglass', 'Backglass'),
+            ('table', 'Table'),
+            ('dmd', 'DMD'),
+            ('topper', 'Topper'),
+            ('wheel', 'Wheel'),
+            ('launch_audio', 'Launch Audio'),
+            ('table_audio', 'Table Audio')
+        ]
+
+        for key, label in media_categories:
+            checkbox = QPushButton(label)
+            checkbox.setCheckable(True)
+            checkbox.setChecked(True)  # Default to all checked
+            checkbox.setStyleSheet("""
+                QPushButton {
+                    padding: 5px 10px;
+                    border: 2px solid #555;
+                    border-radius: 4px;
+                    background-color: #4CAF50;
+                    color: white;
+                }
+                QPushButton:checked {
+                    background-color: #4CAF50;
+                    border-color: #4CAF50;
+                }
+                QPushButton:!checked {
+                    background-color: #999;
+                    border-color: #666;
+                }
+            """)
+            self.media_category_checkboxes[key] = checkbox
+            media_checkboxes_layout.addWidget(checkbox)
+
+        media_group.setLayout(media_checkboxes_layout)
+        table_main_layout.addWidget(media_group)
+
+        # Bottom row - action buttons
+        button_layout = QHBoxLayout()
 
         self.download_btn = QPushButton("Download Media")
         self.download_btn.clicked.connect(self.start_download)
         self.download_btn.setEnabled(False)
-        table_layout.addWidget(self.download_btn)
+        button_layout.addWidget(self.download_btn)
 
         self.stop_btn = QPushButton("Stop Download")
         self.stop_btn.clicked.connect(self.stop_download)
         self.stop_btn.setEnabled(False)
-        table_layout.addWidget(self.stop_btn)
+        button_layout.addWidget(self.stop_btn)
 
         self.import_pack_btn = QPushButton("Import Media Pack")
         self.import_pack_btn.clicked.connect(self.import_media_pack)
         self.import_pack_btn.setEnabled(False)
-        table_layout.addWidget(self.import_pack_btn)
+        button_layout.addWidget(self.import_pack_btn)
 
         self.refresh_cache_btn = QPushButton("Refresh Media Cache")
         self.refresh_cache_btn.clicked.connect(self.refresh_media_cache)
         self.refresh_cache_btn.setToolTip("Update the media file listing from FTP (recommended weekly)")
-        table_layout.addWidget(self.refresh_cache_btn)
+        button_layout.addWidget(self.refresh_cache_btn)
 
-        table_group.setLayout(table_layout)
+        table_main_layout.addLayout(button_layout)
+
+        table_group.setLayout(table_main_layout)
         layout.addWidget(table_group)
 
         # Download status
@@ -1200,6 +1256,16 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Please select a table first")
             return
 
+        # Get selected media categories
+        selected_categories = [
+            key for key, checkbox in self.media_category_checkboxes.items()
+            if checkbox.isChecked()
+        ]
+
+        if not selected_categories:
+            QMessageBox.warning(self, "Error", "Please select at least one media category")
+            return
+
         # Check if media cache needs refresh
         # If a cache refresh is triggered, abort this download
         if self.check_cache_age():
@@ -1209,8 +1275,8 @@ class MainWindow(QMainWindow):
         # Clear previous downloads
         self.media_review.clear_files()
 
-        # Start download thread
-        self.download_thread = FTPDownloadThread(username, password, self.selected_table, self.config_dir, self.db_manager)
+        # Start download thread with selected categories
+        self.download_thread = FTPDownloadThread(username, password, self.selected_table, self.config_dir, self.db_manager, selected_categories)
         self.download_thread.progress.connect(self.update_status)
         self.download_thread.progress_update.connect(self.update_progress_bar)
         self.download_thread.file_downloaded.connect(self.on_file_downloaded)
@@ -1224,7 +1290,7 @@ class MainWindow(QMainWindow):
         self.status_label.setText("Connecting to FTP server...")
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.progress_bar.show()
-        self.log("Starting download...")
+        self.log(f"Starting download for categories: {', '.join(selected_categories)}...")
 
     def update_status(self, message: str):
         """Update the status label and log"""
