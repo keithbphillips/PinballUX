@@ -1,3 +1,11 @@
+pinballux (0.2.3-1) unstable; urgency=medium
+
+  * Add selectable media category checkboxes to Table Manager
+  * Users can now choose which media types to download (backglass, table, DMD, etc.)
+  * Download filtering by selected categories
+
+ -- Keith Phillips <keith@example.com>  Sun, 13 Oct 2025 12:00:00 -0500
+
 pinballux (0.2.2-1) unstable; urgency=medium
 
   * Fix DMD auto-position values being overwritten by screen selection changes
