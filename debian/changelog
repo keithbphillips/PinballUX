@@ -1,3 +1,14 @@
+pinballux (0.2.4-1) unstable; urgency=medium
+
+  * Redesign wheel interface with futuristic neon glow effects
+  * Add pulsing animated borders with cyan-to-purple gradient
+  * Implement responsive wheel height adapting to screen size
+  * Add 3D depth with parabolic curve for wheel items
+  * Redesign background as stage platform with curved top and flat bottom
+  * Filter libpng iCCP warnings for cleaner console output
+
+ -- Keith Phillips <keith@example.com>  Mon, 14 Oct 2025 11:30:00 -0500
+
 pinballux (0.2.3-1) unstable; urgency=medium
 
   * Add selectable media category checkboxes to Table Manager
