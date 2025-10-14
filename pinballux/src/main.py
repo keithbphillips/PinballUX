@@ -8,7 +8,7 @@ import os
 import logging
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
-from PyQt6.QtCore import Qt, QSettings
+from PyQt6.QtCore import Qt, QSettings, QtMsgType, qInstallMessageHandler
 from PyQt6.QtGui import QIcon
 
 # Add the pinballux directory to the Python path to fix imports
@@ -25,6 +25,28 @@ except ModuleNotFoundError:
     from src.core.application import PinballUXApp
     from src.core.config import Config
     from src.core.logger import setup_logging
+
+
+def qt_message_handler(mode, context, message):
+    """
+    Custom Qt message handler to filter out harmless warnings.
+    Suppresses libpng iCCP profile warnings that clutter the console.
+    """
+    # Filter out libpng iCCP warnings (harmless color profile warnings)
+    if "libpng warning: iCCP" in message:
+        return
+
+    # Pass through other messages to default handler
+    if mode == QtMsgType.QtDebugMsg:
+        logging.debug(f"Qt: {message}")
+    elif mode == QtMsgType.QtInfoMsg:
+        logging.info(f"Qt: {message}")
+    elif mode == QtMsgType.QtWarningMsg:
+        logging.warning(f"Qt: {message}")
+    elif mode == QtMsgType.QtCriticalMsg:
+        logging.error(f"Qt: {message}")
+    elif mode == QtMsgType.QtFatalMsg:
+        logging.critical(f"Qt: {message}")
 
 
 def setup_vpinmame_roms_symlink():
@@ -76,6 +98,9 @@ def main():
     """Main application entry point"""
     # Set up high DPI scaling (PyQt6 handles this automatically)
     os.environ['QT_AUTO_SCREEN_SCALE_FACTOR'] = '1'
+
+    # Install custom message handler to filter out harmless libpng warnings
+    qInstallMessageHandler(qt_message_handler)
 
     # Create the Qt application
     app = QApplication(sys.argv)

@@ -171,7 +171,7 @@ class LoadingPopup(QWidget):
 
 
 class WheelBackground(QWidget):
-    """Semi-circular background widget for the wheel to create a realistic wheel effect"""
+    """Futuristic semi-circular background widget with glowing neon effects"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -179,84 +179,122 @@ class WheelBackground(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
 
+        # Animation timer for pulsing glow effect
+        self.glow_intensity = 0.0
+        self.glow_direction = 1
+        self.glow_timer = QTimer()
+        self.glow_timer.timeout.connect(self._update_glow)
+        self.glow_timer.start(50)  # Update every 50ms for smooth animation
+
+    def _update_glow(self):
+        """Update glow animation"""
+        self.glow_intensity += 0.02 * self.glow_direction
+        if self.glow_intensity >= 1.0:
+            self.glow_intensity = 1.0
+            self.glow_direction = -1
+        elif self.glow_intensity <= 0.0:
+            self.glow_intensity = 0.0
+            self.glow_direction = 1
+        self.update()
+
     def paintEvent(self, event):
-        """Draw a solid, dark semi-circular wheel background with side extensions for better contrast"""
+        """Draw a futuristic wheel background with glowing neon effects - unified curved stage"""
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
 
         width = self.width()
         height = self.height()
         center_x = width // 2
-        center_y = height - 20  # Position near bottom of widget
 
-        # Create the main wheel arc - larger and more prominent
-        wheel_radius = min(width * 0.45, height * 0.85)
+        # Create a stage with flat bottom and curved top
+        arc_width = width * 0.95  # Wide but within bounds
+        arc_height = height * 0.5  # Height of the arc
 
-        # Draw solid dark wheel background
+        # Bottom line position
+        bottom_y = height * 0.65
+
+        # Arc center is at the bottom line height (so arc endpoints meet the line)
+        center_y = bottom_y
+
+        # Create unified curved path
         wheel_path = QPainterPath()
-        wheel_rect = QRectF(center_x - wheel_radius, center_y - wheel_radius,
-                           wheel_radius * 2, wheel_radius * 2)
-        wheel_path.arcMoveTo(wheel_rect, 0)  # Start at 0 degrees (right side)
-        wheel_path.arcTo(wheel_rect, 0, 180)  # Draw 180 degree arc (top half)
 
-        # Create a solid line across the bottom to close the semi-circle
-        wheel_path.lineTo(center_x - wheel_radius, center_y)
+        # Start at left endpoint of bottom line
+        left_x = center_x - arc_width / 2
+        right_x = center_x + arc_width / 2
+
+        # Move to left endpoint
+        wheel_path.moveTo(left_x, bottom_y)
+
+        # Draw horizontal bottom line to right endpoint
+        wheel_path.lineTo(right_x, bottom_y)
+
+        # Create elliptical arc that curves upward from the bottom line
+        arc_rect = QRectF(left_x, center_y - arc_height / 2,
+                         arc_width, arc_height)
+
+        # Draw arc from right side (0 degrees) through top (270 degrees) to left side (180 degrees)
+        wheel_path.arcTo(arc_rect, 0, 180)  # Sweep 180 degrees counter-clockwise
+
         wheel_path.closeSubpath()
 
-        # Fill with solid dark color for maximum contrast
-        solid_dark_color = QColor(25, 25, 25, 240)  # Very dark, nearly opaque
-        painter.fillPath(wheel_path, QBrush(solid_dark_color))
+        # Background gradient - dark with subtle blue tint
+        bg_gradient = QLinearGradient(center_x, center_y - arc_height / 2, center_x, center_y + arc_height * 0.2)
+        bg_gradient.setColorAt(0, QColor(15, 20, 35, 250))  # Dark blue-tinted top
+        bg_gradient.setColorAt(0.5, QColor(10, 15, 25, 250))  # Darker middle
+        bg_gradient.setColorAt(1, QColor(20, 25, 40, 250))  # Slightly lighter bottom
+        painter.fillPath(wheel_path, QBrush(bg_gradient))
 
-        # Add side extension bars to cover outer wheel items
-        side_bar_width = 250  # Width of each side bar
-        side_bar_height = wheel_radius * 0.7  # Height of side bars - reduced from 1.2 to 0.7
+        # Draw multiple glowing neon borders for futuristic effect
+        glow_alpha = int(150 + 50 * self.glow_intensity)  # Pulsing glow
 
-        # Left side bar
-        left_bar = QRectF(0, center_y - side_bar_height, side_bar_width, side_bar_height)
-        painter.fillRect(left_bar, QBrush(solid_dark_color))
+        # Outer glow (widest, most transparent)
+        for i in range(3):
+            glow_width = 8 - i * 2
+            glow_alpha_layer = glow_alpha // (i + 2)
 
-        # Right side bar
-        right_bar = QRectF(width - side_bar_width, center_y - side_bar_height, side_bar_width, side_bar_height)
-        painter.fillRect(right_bar, QBrush(solid_dark_color))
+            glow_gradient = QLinearGradient(0, center_y, width, center_y)
+            glow_gradient.setColorAt(0, QColor(0, 150, 255, glow_alpha_layer))  # Cyan
+            glow_gradient.setColorAt(0.5, QColor(100, 180, 255, glow_alpha_layer))  # Bright cyan
+            glow_gradient.setColorAt(1, QColor(180, 100, 255, glow_alpha_layer))  # Purple
 
-        # Add gradual fade-out effect on the outer edges of side bars
-        fade_width = 50
+            glow_pen = QPen(QBrush(glow_gradient), glow_width)
+            painter.setPen(glow_pen)
+            painter.drawPath(wheel_path)
 
-        # Left fade gradient
-        left_gradient = QLinearGradient(side_bar_width - fade_width, 0, side_bar_width, 0)
-        left_gradient.setColorAt(0, solid_dark_color)
-        left_gradient.setColorAt(1, QColor(25, 25, 25, 0))  # Transparent
-        left_fade_rect = QRectF(side_bar_width - fade_width, center_y - side_bar_height, fade_width, side_bar_height)
-        painter.fillRect(left_fade_rect, QBrush(left_gradient))
+        # Inner accent line (sharp, bright)
+        accent_gradient = QLinearGradient(0, center_y, width, center_y)
+        accent_gradient.setColorAt(0, QColor(0, 200, 255, 200))
+        accent_gradient.setColorAt(0.5, QColor(150, 220, 255, 255))
+        accent_gradient.setColorAt(1, QColor(200, 150, 255, 200))
 
-        # Right fade gradient
-        right_gradient = QLinearGradient(width - side_bar_width, 0, width - side_bar_width + fade_width, 0)
-        right_gradient.setColorAt(0, QColor(25, 25, 25, 0))  # Transparent
-        right_gradient.setColorAt(1, solid_dark_color)
-        right_fade_rect = QRectF(width - side_bar_width, center_y - side_bar_height, fade_width, side_bar_height)
-        painter.fillRect(right_fade_rect, QBrush(right_gradient))
-
-        # Add a subtle border for definition on the main wheel
-        border_pen = QPen(QColor(60, 60, 60, 200), 3)
-        painter.setPen(border_pen)
+        accent_pen = QPen(QBrush(accent_gradient), 1)
+        painter.setPen(accent_pen)
         painter.drawPath(wheel_path)
 
-        # Add a thin inner border for depth
-        inner_radius = wheel_radius * 0.9
-        inner_path = QPainterPath()
-        inner_rect = QRectF(center_x - inner_radius, center_y - inner_radius,
-                           inner_radius * 2, inner_radius * 2)
-        inner_path.arcMoveTo(inner_rect, 0)
-        inner_path.arcTo(inner_rect, 0, 180)
+        # Add inner arc for depth - slightly smaller
+        inner_width = arc_width * 0.90
+        inner_height = arc_height * 0.90
+        inner_arc_rect = QRectF(center_x - inner_width / 2, center_y - inner_height / 2,
+                               inner_width, inner_height)
 
-        inner_border_pen = QPen(QColor(40, 40, 40, 150), 1)
-        painter.setPen(inner_border_pen)
+        inner_path = QPainterPath()
+        inner_path.arcMoveTo(inner_arc_rect, 180)
+        inner_path.arcTo(inner_arc_rect, 180, -180)
+
+        # Subtle inner glow
+        inner_glow_gradient = QLinearGradient(center_x, center_y - inner_height / 2, center_x, center_y)
+        inner_glow_gradient.setColorAt(0, QColor(50, 100, 150, 80))
+        inner_glow_gradient.setColorAt(1, QColor(50, 100, 150, 30))
+
+        inner_pen = QPen(QBrush(inner_glow_gradient), 2)
+        painter.setPen(inner_pen)
         painter.drawPath(inner_path)
 
         painter.end()
 
 class WheelItem(QLabel):
-    """Individual wheel item displaying a table's wheel image"""
+    """Individual wheel item displaying a table's wheel image with glow effects"""
 
     def __init__(self, table_data: dict, parent=None):
         super().__init__(parent)
@@ -272,6 +310,10 @@ class WheelItem(QLabel):
 
         # Load wheel image
         self.load_wheel_image()
+
+        # Glow animation for selected item
+        self.glow_intensity = 0.0
+        self.glow_timer = None
 
     @pyqtProperty(float)
     def animated_scale(self):
@@ -371,14 +413,33 @@ class WheelItem(QLabel):
         return self._scale_factor
 
     def set_selected(self, selected: bool):
-        """Set the selection state"""
+        """Set the selection state - no borders for circular theme"""
         self.is_selected = selected
-        # Remove background color for both selected and unselected states
-        self.setStyleSheet("""
-            border: none;
-            border-radius: 10px;
-            background-color: transparent;
-        """)
+
+        if selected:
+            # No border - clean circular theme
+            # Just transparent background
+            self.setStyleSheet("""
+                border: none;
+                border-radius: 0px;
+                background-color: transparent;
+            """)
+
+            # Stop glow animation if running (we're not using it anymore)
+            if self.glow_timer:
+                self.glow_timer.stop()
+                self.glow_timer = None
+        else:
+            # No border for non-selected items either
+            self.setStyleSheet("""
+                border: none;
+                border-radius: 0px;
+                background-color: transparent;
+            """)
+
+    def _update_glow(self):
+        """Update glow animation - currently disabled for clean circular theme"""
+        pass
 
 
 class WheelWidget(QWidget):
@@ -427,7 +488,7 @@ class WheelWidget(QWidget):
 
         # Create wheel container and embed it in the scene
         self.wheel_container = QWidget()
-        self.wheel_container.setFixedHeight(300)
+        # Don't set fixed height - let _update_scene_layout handle sizing dynamically
         self.wheel_container.setStyleSheet("""
             background-color: transparent;
         """)
@@ -575,15 +636,20 @@ class WheelWidget(QWidget):
             relative_pos = i - self.current_index
 
             # Calculate horizontal position (wheel effect)
-            x_offset = relative_pos * 180  # Spacing between items - increased from 150 to 180
-            y_offset = abs(relative_pos) * 20  # Slight vertical curve
+            x_offset = relative_pos * 180  # Spacing between items
 
-            # Scale factor based on distance from center
+            # Improved 3D perspective curve - parabolic y-offset for better depth
+            # Items arc upward as they move away from center
+            y_offset = (relative_pos ** 2) * 8  # Quadratic curve for 3D depth effect
+
+            # Scale factor based on distance from center with smoother falloff
             if relative_pos == 0:
-                scale_factor = 1.0  # Center item same size - reduced from 1.2 to prevent cutoff
+                scale_factor = 1.0  # Center item
                 item.set_selected(True)
             else:
-                scale_factor = max(0.6, 1.0 - abs(relative_pos) * 0.15)
+                # Smooth exponential falloff for scale
+                distance = abs(relative_pos)
+                scale_factor = max(0.55, 1.0 - distance * 0.18)
                 item.set_selected(False)
 
             item.set_scale_factor(scale_factor)
@@ -650,15 +716,19 @@ class WheelWidget(QWidget):
             relative_pos = i - self.current_index
 
             # Calculate target position (wheel effect)
-            x_offset = relative_pos * 180  # Spacing between items - increased from 150 to 180
-            y_offset = abs(relative_pos) * 20  # Slight vertical curve
+            x_offset = relative_pos * 180  # Spacing between items
+
+            # Improved 3D perspective curve - parabolic y-offset
+            y_offset = (relative_pos ** 2) * 8  # Quadratic curve for 3D depth effect
 
             # Target scale factor based on distance from center
             if relative_pos == 0:
-                target_scale = 1.0  # Center item same size - reduced from 1.2 to prevent cutoff
+                target_scale = 1.0  # Center item
                 item.set_selected(True)
             else:
-                target_scale = max(0.6, 1.0 - abs(relative_pos) * 0.15)
+                # Smooth exponential falloff for scale
+                distance = abs(relative_pos)
+                target_scale = max(0.55, 1.0 - distance * 0.18)
                 item.set_selected(False)
 
             # Target position
@@ -1147,15 +1217,22 @@ class WheelWidget(QWidget):
 
         # Wheel container placement
         if hasattr(self, 'wheel_proxy'):
-            wheel_height = 300
+            # Calculate available space for wheel (between top and info widget)
+            top_margin = 20.0
+            gap_to_info = -200  # Negative to overlap - brings wheel visually closer to info
+            available_space = info_top_y - top_margin - gap_to_info if info_top_y else height - top_margin - info_height - 40
+
+            # Use 75% of available space for wheel, with min 250 and max 600
+            wheel_height = int(max(250, min(600, available_space * 0.85)))
+
             wheel_width = max(0, min(800, max(0, width - 40)))
             wheel_x = (width - wheel_width) / 2 if width >= wheel_width else 0
 
-            bottom_margin = 40.0
-            desired_wheel_y = height - info_height - wheel_height - bottom_margin
-            if info_top_y is not None:
-                desired_wheel_y = min(desired_wheel_y, info_top_y - wheel_height - 20.0)
-            wheel_y = max(20.0, desired_wheel_y)
+            # Position wheel with small gap above info widget
+            wheel_y = info_top_y - wheel_height - gap_to_info if info_top_y else top_margin
+            wheel_y = max(top_margin, wheel_y)
+
+            print(f"DEBUG: available_space={available_space:.1f}, wheel_height={wheel_height}, wheel_y={wheel_y}, info_top_y={info_top_y}, gap={info_top_y - wheel_y - wheel_height if info_top_y else 'N/A'}")
 
             self.wheel_proxy.setGeometry(QRectF(wheel_x, wheel_y, wheel_width, wheel_height))
             self.wheel_container.resize(int(wheel_width), wheel_height)
