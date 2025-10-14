@@ -101,14 +101,14 @@ pip install -r requirements.txt
 
 7. **Configure PinballUX** - Run the Setup GUI to configure displays, input, and VPX paths:
 ```bash
-python setup_gui.py
+pinballux-setup
 ```
 
 See the [Setup GUI](#setup-gui) section below for details.
 
 8. **Run Table Manager** - Scan tables and download media:
 ```bash
-python table_manager.py
+pinballux-manager
 ```
 
 See the [Table Manager](#table-manager) section below for details.
@@ -120,7 +120,7 @@ The Setup GUI provides a user-friendly interface for configuring all aspects of 
 ### Running Setup GUI
 
 ```bash
-python setup_gui.py
+pinballux-setup
 ```
 
 ### Configuration Tabs
@@ -172,7 +172,7 @@ The Table Manager is a PyQt6 GUI application that handles table scanning, media 
 ### Running Table Manager
 
 ```bash
-python table_manager.py
+pinballux-manager
 ```
 
 On startup, the Table Manager will automatically:
@@ -287,7 +287,7 @@ Control audio playback in `~/.config/pinballux/config.json`:
 
 Run PinballUX:
 ```bash
-python run_pinballux.py
+pinballux
 ```
 
 ### Keyboard Controls
@@ -299,16 +299,13 @@ python run_pinballux.py
 
 ### Joystick/Controller Configuration
 
-PinballUX includes a joystick mapping utility that configures buttons for both the frontend navigation and Visual Pinball gameplay.
+Configure your joystick/controller using the Setup GUI:
 
-#### Configuring Your Controller
-
-Run the joystick mapper:
 ```bash
-python map_joystick.py
+pinballux-setup
 ```
 
-The mapper will guide you through configuring:
+The **Joystick Tab** allows you to configure buttons for both frontend navigation and Visual Pinball gameplay:
 
 **Frontend Controls:**
 - Navigate wheel left/right
@@ -322,7 +319,7 @@ The mapper will guide you through configuring:
 - Left/Right MagnaSave
 - Exit table
 
-Button mappings are saved to:
+Button mappings are automatically saved to:
 - `~/.config/pinballux/config.json` (PinballUX frontend)
 - `~/.vpinball/VPinballX.ini` (Visual Pinball gameplay)
 
