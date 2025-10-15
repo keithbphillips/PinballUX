@@ -27,6 +27,8 @@ class Table(Base):
     manufacturer = Column(String(100), index=True)
     year = Column(Integer, index=True)
     type = Column(String(50))  # SS (Solid State), EM (Electromechanical), etc.
+    theme = Column(String(255))  # Theme (e.g., "Sports, Bowling", "Science Fiction")
+    ipdb_number = Column(Integer, index=True)  # Internet Pinball Database ID
 
     # File information
     file_path = Column(String(500), nullable=False, unique=True)
@@ -249,7 +251,9 @@ class DatabaseManager:
                     'topper_video': 'VARCHAR(500)',
                     'wheel_image': 'VARCHAR(500)',
                     'table_audio': 'VARCHAR(500)',
-                    'launch_audio': 'VARCHAR(500)'
+                    'launch_audio': 'VARCHAR(500)',
+                    'theme': 'VARCHAR(255)',
+                    'ipdb_number': 'INTEGER'
                 }
 
                 # Add missing columns

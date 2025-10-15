@@ -1170,6 +1170,11 @@ class MainWindow(QMainWindow):
         self.import_pack_btn.setEnabled(False)
         button_layout.addWidget(self.import_pack_btn)
 
+        self.import_csv_btn = QPushButton("Import CSV Database")
+        self.import_csv_btn.clicked.connect(self.import_csv_database)
+        self.import_csv_btn.setToolTip("Import table metadata (theme, IPDB number) from PinballX database CSV")
+        button_layout.addWidget(self.import_csv_btn)
+
         self.refresh_cache_btn = QPushButton("Refresh Media Cache")
         self.refresh_cache_btn.clicked.connect(self.refresh_media_cache)
         self.refresh_cache_btn.setToolTip("Update the media file listing from FTP (recommended weekly)")
@@ -1648,6 +1653,122 @@ class MainWindow(QMainWindow):
             self.status_label.setText("✗ Import failed")
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
             QMessageBox.critical(self, "Import Error", f"Error importing media pack:\n{e}")
+
+    def import_csv_database(self):
+        """Import table metadata from PinballX database CSV file"""
+        # Check if CSV file exists in project root first
+        default_csv_path = Path(project_root) / "pinballxdatabase.csv"
+
+        if default_csv_path.exists():
+            csv_path = str(default_csv_path)
+            self.log(f"Found CSV file: {default_csv_path.name}")
+        else:
+            # Fall back to file dialog if not found
+            csv_path, _ = QFileDialog.getOpenFileName(
+                self,
+                "Select PinballX Database CSV",
+                str(Path.home()),
+                "CSV Files (*.csv);;All Files (*.*)"
+            )
+
+            if not csv_path:
+                return  # User cancelled
+
+        try:
+            # Import parser
+            try:
+                from pinballux.src.database.pinballx_database_parser import PinballXDatabaseParser
+            except ModuleNotFoundError:
+                from src.database.pinballx_database_parser import PinballXDatabaseParser
+
+            self.log(f"Parsing CSV file: {Path(csv_path).name}")
+            self.status_label.setText("Parsing CSV database...")
+
+            # Parse CSV file
+            parser = PinballXDatabaseParser(csv_path)
+            csv_data = parser.parse()
+
+            if not csv_data:
+                QMessageBox.warning(self, "Import Error", "No data found in CSV file")
+                return
+
+            self.log(f"✓ Parsed {len(csv_data)} tables from CSV")
+
+            # Match CSV data to existing tables and update
+            matched_count = 0
+            updated_count = 0
+            all_tables = self.table_service.get_all_tables(enabled_only=False)
+
+            self.log(f"Matching {len(all_tables)} tables in database...")
+            self.status_label.setText(f"Matching {len(all_tables)} tables...")
+
+            for table in all_tables:
+                # Try to find matching CSV entry
+                csv_entry = parser.find_table_by_name(
+                    table.name,
+                    table.manufacturer,
+                    table.year
+                )
+
+                if csv_entry:
+                    matched_count += 1
+
+                    # Check if we need to update anything
+                    needs_update = False
+                    update_fields = []
+
+                    if csv_entry.get('theme') and csv_entry['theme'] != table.theme:
+                        table.theme = csv_entry['theme']
+                        needs_update = True
+                        update_fields.append('theme')
+
+                    if csv_entry.get('ipdb_number') and csv_entry['ipdb_number'] != table.ipdb_number:
+                        table.ipdb_number = csv_entry['ipdb_number']
+                        needs_update = True
+                        update_fields.append('IPDB')
+
+                    # Update author if not set
+                    if csv_entry.get('author') and not table.author:
+                        table.author = csv_entry['author']
+                        needs_update = True
+                        update_fields.append('author')
+
+                    # Update players if not set
+                    if csv_entry.get('players') and csv_entry['players'] != table.players:
+                        table.players = csv_entry['players']
+                        needs_update = True
+                        update_fields.append('players')
+
+                    if needs_update:
+                        updated_count += 1
+                        self.log(f"  ✓ Updated {table.name}: {', '.join(update_fields)}")
+
+            # Save changes
+            with self.db_manager.get_session() as session:
+                for table in all_tables:
+                    session.merge(table)
+                session.commit()
+
+            # Show summary
+            self.status_label.setText("✓ CSV import complete")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+
+            summary = (
+                f"CSV Import Complete!\n\n"
+                f"Total CSV entries: {len(csv_data)}\n"
+                f"Matched tables: {matched_count}\n"
+                f"Updated tables: {updated_count}\n\n"
+                f"Table metadata (theme, IPDB number, author, players) has been imported."
+            )
+
+            self.log(f"✓ Import complete: {matched_count} matched, {updated_count} updated")
+            QMessageBox.information(self, "Import Complete", summary)
+
+        except Exception as e:
+            self.log(f"✗ Error importing CSV: {e}")
+            self.status_label.setText("✗ CSV import failed")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
+            QMessageBox.critical(self, "Import Error", f"Error importing CSV:\n{e}")
 
     def closeEvent(self, event):
         """Handle window close event"""
