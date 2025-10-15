@@ -1,3 +1,15 @@
+pinballux (0.2.5-1) unstable; urgency=medium
+
+  * Add PinballX database CSV parser for table metadata extraction
+  * Add fuzzy table matching by name, manufacturer, and year
+  * Include comprehensive PinballX database with table information
+  * Add documentation for GUID fixes, installation, and joystick mapping
+  * Add utility scripts for DirectB2S and launch audio checking
+  * Update .gitignore to exclude build artifacts and user data
+  * Add PinballUX logo assets
+
+ -- Keith Phillips <keith@example.com>  Tue, 15 Oct 2025 17:30:00 -0500
+
 pinballux (0.2.4-1) unstable; urgency=medium
 
   * Redesign wheel interface with futuristic neon glow effects
