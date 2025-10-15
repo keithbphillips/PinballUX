@@ -154,6 +154,14 @@ class PinballUXApp(QMainWindow):
         """Handle application close event"""
         self.logger.info("PinballUX application closing")
 
+        # Clean up main window first (contains media players and timers)
+        if self.main_window:
+            try:
+                # Trigger cleanup by closing the main window widget
+                self.main_window.close()
+            except Exception as e:
+                self.logger.error(f"Error closing main window: {e}")
+
         # Close all display windows
         if self.monitor_manager:
             self.monitor_manager.close_displays()
