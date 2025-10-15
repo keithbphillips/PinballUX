@@ -39,6 +39,7 @@ Thumbs.db
 
 # Screenshots
 Screenshots/
+Screenshot*.png
 
 # Database
 *.db
@@ -94,3 +95,13 @@ debian/tmp/
 *.dsc
 *.changes
 *.buildinfo
+.pybuild/
+
+# Temporary download directories
+ftp_downloads_temp/
+
+# Media packs (large ZIP files)
+pinballux/data/media/packs/
+
+# User data directory (media files)
+data/
