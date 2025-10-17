@@ -820,45 +820,112 @@ class MediaReviewWidget(QWidget):
         self.current_file = file
         self.save_btn.setEnabled(file.status == "pending")
 
-        # Properly cleanup before loading new media
-        self.cleanup_media_players()
+        # Stop and cleanup both media players completely
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
+        self.media_player.setVideoOutput(None)
+        self.media_player.setAudioOutput(None)
 
+        self.existing_media_player.stop()
+        self.existing_media_player.setSource(QUrl())
+        self.existing_media_player.setVideoOutput(None)
+        self.existing_media_player.setAudioOutput(None)
+
+        # Reset widget visibility to known state
+        self.downloaded_video_widget.hide()
+        self.downloaded_image_label.hide()
+        self.existing_video_widget.hide()
+        self.existing_image_label.hide()
+
+        # Use QTimer to delay preview showing slightly to allow Qt to process the cleanup
+        QTimer.singleShot(50, lambda: self._show_previews(file))
+
+    def _show_previews(self, file: DownloadedFile):
+        """Show previews after cleanup delay"""
         # Show downloaded file preview
         self.show_downloaded_preview(file)
 
         # Show existing file preview
         self.show_existing_preview(file)
 
+        # Keep log scrolled to bottom to show newest entries
+        main_window = self.window()
+        if hasattr(main_window, 'progress_text'):
+            cursor = main_window.progress_text.textCursor()
+            cursor.movePosition(cursor.MoveOperation.End)
+            main_window.progress_text.setTextCursor(cursor)
+            main_window.progress_text.ensureCursorVisible()
+
     def show_downloaded_preview(self, file: DownloadedFile):
         """Show preview of the downloaded file"""
         ext = file.temp_path.suffix.lower()
 
+        # Remove both widgets from layout first
+        self.downloaded_preview_layout.removeWidget(self.downloaded_image_label)
+        self.downloaded_preview_layout.removeWidget(self.downloaded_video_widget)
+
+        # ALWAYS destroy the old video widget first to clean up native overlay
+        self.downloaded_video_widget.deleteLater()
+
         if ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
             # Video
             self.downloaded_image_label.hide()
-            self.downloaded_video_widget.show()
-            # Ensure video/audio outputs are connected before setting source
+
+            # Create a fresh video widget
+            self.downloaded_video_widget = QVideoWidget()
+            self.downloaded_video_widget.setMinimumSize(400, 300)
+            self.downloaded_video_widget.mousePressEvent = lambda e: self.play_downloaded_media()
+
+            # Add the new video widget to layout
+            self.downloaded_preview_layout.addWidget(self.downloaded_video_widget)
+
+            # Set video output and source
             self.media_player.setVideoOutput(self.downloaded_video_widget)
             self.media_player.setAudioOutput(self.audio_output)
             self.media_player.setSource(QUrl.fromLocalFile(str(file.temp_path)))
+
+            # Show the widget
+            self.downloaded_video_widget.show()
+
+            # Force geometry update
+            self.downloaded_video_widget.updateGeometry()
+            QApplication.processEvents()
+
+            # Start playback
             self.media_player.play()
+
         elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
             # Image
+            # Create a new empty video widget (since we deleted the old one)
+            self.downloaded_video_widget = QVideoWidget()
+            self.downloaded_video_widget.setMinimumSize(400, 300)
             self.downloaded_video_widget.hide()
+
             self.downloaded_image_label.show()
+            # Re-add image label to layout
+            self.downloaded_preview_layout.addWidget(self.downloaded_image_label)
+            self.downloaded_image_label.raise_()
+            self.downloaded_image_label.setFocus()
             pixmap = QPixmap(str(file.temp_path))
-            # Scale to a fixed reasonable size
             scaled_pixmap = pixmap.scaled(400, 400,
                                           Qt.AspectRatioMode.KeepAspectRatio,
                                           Qt.TransformationMode.SmoothTransformation)
             self.downloaded_image_label.setPixmap(scaled_pixmap)
             self.downloaded_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+
         elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
             # Audio
+            # Create a new empty video widget (since we deleted the old one)
+            self.downloaded_video_widget = QVideoWidget()
+            self.downloaded_video_widget.setMinimumSize(400, 300)
             self.downloaded_video_widget.hide()
+
             self.downloaded_image_label.show()
+            # Re-add image label to layout
+            self.downloaded_preview_layout.addWidget(self.downloaded_image_label)
+            self.downloaded_image_label.raise_()
+            self.downloaded_image_label.setFocus()
             self.downloaded_image_label.setText(f"🔊 Click to play: {file.ftp_filename}")
-            # Reconnect audio output (disconnected during cleanup)
             self.media_player.setAudioOutput(self.audio_output)
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
@@ -908,24 +975,56 @@ class MediaReviewWidget(QWidget):
         """Show preview of the existing PinballUX file if it exists"""
         local_path = self.find_existing_file(file)
 
+        # Remove both widgets from layout first
+        self.existing_preview_layout.removeWidget(self.existing_image_label)
+        self.existing_preview_layout.removeWidget(self.existing_video_widget)
+
+        # ALWAYS destroy the old video widget first to clean up native overlay
+        self.existing_video_widget.deleteLater()
+
         if local_path:
             ext = local_path.suffix.lower()
 
             if ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
                 # Video
                 self.existing_image_label.hide()
-                self.existing_video_widget.show()
-                # Ensure video/audio outputs are connected before setting source
+
+                # Create a fresh video widget
+                self.existing_video_widget = QVideoWidget()
+                self.existing_video_widget.setMinimumSize(400, 300)
+                self.existing_video_widget.mousePressEvent = lambda e: self.play_existing_media()
+
+                # Add the new video widget to layout
+                self.existing_preview_layout.addWidget(self.existing_video_widget)
+
+                # Set video output and source
                 self.existing_media_player.setVideoOutput(self.existing_video_widget)
                 self.existing_media_player.setAudioOutput(self.existing_audio_output)
                 self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
+
+                # Show the widget
+                self.existing_video_widget.show()
+
+                # Force geometry update
+                self.existing_video_widget.updateGeometry()
+                QApplication.processEvents()
+
+                # Start playback
                 self.existing_media_player.play()
+
             elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
                 # Image
+                # Create a new empty video widget (since we deleted the old one)
+                self.existing_video_widget = QVideoWidget()
+                self.existing_video_widget.setMinimumSize(400, 300)
                 self.existing_video_widget.hide()
+
                 self.existing_image_label.show()
+                # Re-add image label to layout
+                self.existing_preview_layout.addWidget(self.existing_image_label)
+                self.existing_image_label.raise_()
+                self.existing_image_label.setFocus()
                 pixmap = QPixmap(str(local_path))
-                # Scale to a fixed reasonable size
                 scaled_pixmap = pixmap.scaled(400, 400,
                                               Qt.AspectRatioMode.KeepAspectRatio,
                                               Qt.TransformationMode.SmoothTransformation)
@@ -933,15 +1032,29 @@ class MediaReviewWidget(QWidget):
                 self.existing_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
             elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
                 # Audio
+                # Create a new empty video widget (since we deleted the old one)
+                self.existing_video_widget = QVideoWidget()
+                self.existing_video_widget.setMinimumSize(400, 300)
                 self.existing_video_widget.hide()
+
                 self.existing_image_label.show()
+                # Re-add image label to layout
+                self.existing_preview_layout.addWidget(self.existing_image_label)
+                self.existing_image_label.raise_()
+                self.existing_image_label.setFocus()
                 self.existing_image_label.setText(f"🔊 Click to play existing: {local_path.name}")
-                # Reconnect audio output (disconnected during cleanup)
                 self.existing_media_player.setAudioOutput(self.existing_audio_output)
         else:
             # No existing file
+            # Create a new empty video widget (since we deleted the old one)
+            self.existing_video_widget = QVideoWidget()
+            self.existing_video_widget.setMinimumSize(400, 300)
             self.existing_video_widget.hide()
+
             self.existing_image_label.show()
+            # Re-add image label to layout
+            self.existing_preview_layout.addWidget(self.existing_image_label)
+            self.existing_image_label.raise_()
             self.existing_image_label.setText("No existing file")
             self.existing_image_label.setPixmap(QPixmap())
 
@@ -981,6 +1094,7 @@ class MediaReviewWidget(QWidget):
         existing_file = self.find_existing_file(self.current_file)
 
         if existing_file:
+            # Only show confirmation if file will be overwritten
             reply = QMessageBox.question(
                 self,
                 "File Exists",
@@ -1006,8 +1120,6 @@ class MediaReviewWidget(QWidget):
 
         # Update the existing preview to show the newly saved file
         self.show_existing_preview(self.current_file)
-
-        QMessageBox.information(self, "Saved", f"File saved to:\n{local_path}")
 
     def delete_all(self):
         """Delete all cached files for the current table"""
@@ -1233,6 +1345,118 @@ class MainWindow(QMainWindow):
         save_credentials(self.config_dir, username, password)
         self.log("✓ Credentials saved")
 
+    def check_missing_media_categories(self, table) -> List[str]:
+        """Check which media categories are missing for a table
+
+        Args:
+            table: Table object to check
+
+        Returns:
+            List of missing media category keys
+        """
+        missing_categories = []
+        base_media_path = Path(project_root) / "data" / "media"
+
+        # Check backglass (images or videos)
+        backglass_exists = False
+        if table.backglass_image or table.backglass_video:
+            backglass_exists = True
+        else:
+            # Check file system
+            for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm']:
+                img_path = base_media_path / "images" / "backglass" / f"{table.name}{ext}"
+                vid_path = base_media_path / "videos" / "backglass" / f"{table.name}{ext}"
+                if img_path.exists() or vid_path.exists():
+                    backglass_exists = True
+                    break
+        if not backglass_exists:
+            missing_categories.append('backglass')
+
+        # Check table (images or videos)
+        table_exists = False
+        if table.table_video or table.playfield_image:
+            table_exists = True
+        else:
+            for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm']:
+                img_path = base_media_path / "images" / "table" / f"{table.name}{ext}"
+                vid_path = base_media_path / "videos" / "table" / f"{table.name}{ext}"
+                if img_path.exists() or vid_path.exists():
+                    table_exists = True
+                    break
+        if not table_exists:
+            missing_categories.append('table')
+
+        # Check DMD (images or videos)
+        dmd_exists = False
+        if table.dmd_image or table.dmd_video:
+            dmd_exists = True
+        else:
+            for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm']:
+                for dmd_dir in ['images/dmd', 'images/real_dmd', 'videos/dmd', 'videos/fulldmd', 'videos/real_dmd', 'videos/real_dmd_color']:
+                    dmd_path = base_media_path / dmd_dir / f"{table.name}{ext}"
+                    if dmd_path.exists():
+                        dmd_exists = True
+                        break
+                if dmd_exists:
+                    break
+        if not dmd_exists:
+            missing_categories.append('dmd')
+
+        # Check topper (images or videos)
+        topper_exists = False
+        if table.topper_image or table.topper_video:
+            topper_exists = True
+        else:
+            for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm']:
+                img_path = base_media_path / "images" / "topper" / f"{table.name}{ext}"
+                vid_path = base_media_path / "videos" / "topper" / f"{table.name}{ext}"
+                if img_path.exists() or vid_path.exists():
+                    topper_exists = True
+                    break
+        if not topper_exists:
+            missing_categories.append('topper')
+
+        # Check wheel
+        wheel_exists = False
+        if table.wheel_image:
+            wheel_exists = True
+        else:
+            for ext in ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp']:
+                wheel_path = base_media_path / "images" / "wheel" / f"{table.name}{ext}"
+                if wheel_path.exists():
+                    wheel_exists = True
+                    break
+        if not wheel_exists:
+            missing_categories.append('wheel')
+
+        # Check launch audio
+        launch_audio_exists = False
+        if table.launch_audio:
+            launch_audio_exists = True
+        else:
+            for ext in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a']:
+                audio_path = base_media_path / "audio" / "launch" / f"{table.name}{ext}"
+                if audio_path.exists():
+                    launch_audio_exists = True
+                    break
+        if not launch_audio_exists:
+            missing_categories.append('launch_audio')
+
+        # Check table audio
+        table_audio_exists = False
+        if table.table_audio:
+            table_audio_exists = True
+        else:
+            for ext in ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a']:
+                audio_path = base_media_path / "audio" / "table" / f"{table.name}{ext}"
+                if audio_path.exists():
+                    table_audio_exists = True
+                    break
+        if not table_audio_exists:
+            missing_categories.append('table_audio')
+
+        return missing_categories
+
     def show_table_selector(self):
         """Show the table selector dialog"""
         all_tables = self.table_service.get_all_tables()
@@ -1247,6 +1471,26 @@ class MainWindow(QMainWindow):
             self.download_btn.setEnabled(True)
             self.import_pack_btn.setEnabled(True)
             self.log(f"Selected table: {self.selected_table.name}")
+
+            # Check which media categories are missing and auto-select them
+            missing_categories = self.check_missing_media_categories(self.selected_table)
+
+            if missing_categories:
+                self.log(f"Missing media categories: {', '.join(missing_categories)}")
+
+                # Auto-select missing categories
+                for key, checkbox in self.media_category_checkboxes.items():
+                    if key in missing_categories:
+                        checkbox.setChecked(True)
+                    else:
+                        checkbox.setChecked(False)
+
+                self.log(f"Auto-selected {len(missing_categories)} missing categories for download")
+            else:
+                # All categories exist - uncheck all
+                for checkbox in self.media_category_checkboxes.values():
+                    checkbox.setChecked(False)
+                self.log("✓ All media categories exist for this table")
 
     def start_download(self):
         """Start the download process"""
