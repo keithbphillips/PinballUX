@@ -1,3 +1,14 @@
+pinballux (0.2.6-1) unstable; urgency=medium
+
+  * Fix media preview refresh issue in Table Manager
+  * Fix native video overlay cleanup when switching media types
+  * Fix ghost video overlays appearing behind application window
+  * QVideoWidget instances now properly destroyed and recreated
+  * Add log window auto-scroll to display latest entries
+  * Add CHANGELOG.md for version tracking
+
+ -- Keith Phillips <keith@example.com>  Thu, 17 Oct 2025 09:15:00 -0500
+
 pinballux (0.2.5-1) unstable; urgency=medium
 
   * Add PinballX database CSV parser for table metadata extraction
