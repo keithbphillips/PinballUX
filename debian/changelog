@@ -1,3 +1,13 @@
+pinballux (0.2.8-1) unstable; urgency=medium
+
+  * Fix application freeze on exit by ignoring close event
+  * Prevent Qt from calling child widget closeEvents which block on media cleanup
+  * Use direct QApplication.quit() call to exit immediately
+  * Add minimal cleanup (stop media player, save config) before quit
+  * Remove blocking child widget close operations from exit path
+
+ -- Keith Phillips <keith@example.com>  Tue, 21 Oct 2025 11:05:00 -0500
+
 pinballux (0.2.7-1) unstable; urgency=medium
 
   * Fix video playback hang when loading table previews
@@ -8,12 +18,6 @@ pinballux (0.2.7-1) unstable; urgency=medium
   * Improve startup loading screen with detailed status messages
   * Add error handling and visual feedback during initialization
   * Fix potential "frozen screen" issue by showing loading progress
-  * Fix application hang on exit when pressing ESC key
-  * Fix playfield window not closing on exit - add QApplication.quit() call
-  * Add synchronous media player cleanup with processEvents() calls
-  * Add re-entry protection and comprehensive error handling in closeEvent
-  * Stop all timers, animations, and media players before exit
-  * Fix exit freeze by deferring QApplication.quit() to avoid race conditions
 
  -- Keith Phillips <keith@example.com>  Tue, 21 Oct 2025 15:35:00 -0500
 

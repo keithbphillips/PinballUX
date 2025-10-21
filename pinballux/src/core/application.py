@@ -4,7 +4,7 @@ Main application class for PinballUX
 
 import sys
 from PyQt6.QtWidgets import QMainWindow, QApplication, QVBoxLayout, QWidget, QLabel
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QCoreApplication
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QCoreApplication, QUrl
 from PyQt6.QtGui import QScreen
 
 from .config import Config
@@ -219,51 +219,48 @@ class PinballUXApp(QMainWindow):
         self.logger.info("PinballUX application shown")
 
     def closeEvent(self, event):
-        """Handle application close event"""
+        """Handle application close event
+
+        NOTE: We ignore the close event and quit directly to avoid freezes.
+        Accepting the close event causes Qt to call closeEvent on all child widgets,
+        and the media player cleanup in those closeEvents can block/freeze.
+        By ignoring the event and calling QApplication.quit() directly, we bypass
+        the child widget closeEvents entirely and exit immediately.
+        """
         self.logger.info("PinballUX application closing")
 
         # Prevent re-entry during close
         if hasattr(self, '_closing'):
-            self.logger.debug("Already closing, accepting event immediately")
-            event.accept()
+            self.logger.debug("Already closing, ignoring")
+            event.ignore()
             return
 
         self._closing = True
 
+        # CRITICAL: Ignore the close event to prevent Qt from calling child closeEvents
+        event.ignore()
+
+        self.logger.debug("Performing minimal cleanup before quit...")
+
+        # Minimal cleanup - just essentials to avoid freezes
         try:
-            # Clean up main window first (contains media players and timers)
-            if self.main_window:
-                try:
-                    self.logger.debug("Closing main window...")
-                    # Trigger cleanup by closing the main window widget
-                    self.main_window.close()
-                    self.logger.debug("Main window closed")
-                except Exception as e:
-                    self.logger.error(f"Error closing main window: {e}", exc_info=True)
+            # Stop background media player to prevent audio continuing after exit
+            if self.main_window and hasattr(self.main_window, 'wheel_widget'):
+                wheel = self.main_window.wheel_widget
+                if hasattr(wheel, 'background_media_player'):
+                    wheel.background_media_player.stop()
+                    self.logger.debug("Stopped background media player")
 
-            # Close all display windows
-            if self.monitor_manager:
-                self.logger.debug("Closing display windows...")
-                self.monitor_manager.close_displays()
-                self.logger.debug("Display windows closed")
-
-            # Save configuration
-            self.logger.debug("Saving configuration...")
+            # Save configuration so user settings persist
             self.config.save()
             self.logger.debug("Configuration saved")
 
         except Exception as e:
-            self.logger.error(f"Error during application close: {e}", exc_info=True)
+            self.logger.error(f"Error during cleanup: {e}")
 
-        finally:
-            # Always accept the close event
-            self.logger.info("Close event accepted")
-            event.accept()
-
-            # Force quit the application after cleanup - use QTimer to defer it
-            # This ensures all cleanup and event processing is complete first
-            self.logger.debug("Scheduling QApplication.quit()...")
-            QTimer.singleShot(100, lambda: QApplication.quit())
+        # Quit the application immediately - this exits the event loop
+        self.logger.debug("Calling QApplication.quit()...")
+        QApplication.quit()
 
     def keyPressEvent(self, event):
         """Handle key press events"""
