@@ -4,7 +4,7 @@ Main application class for PinballUX
 
 import sys
 from PyQt6.QtWidgets import QMainWindow, QApplication, QVBoxLayout, QWidget, QLabel
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QCoreApplication
 from PyQt6.QtGui import QScreen
 
 from .config import Config
@@ -49,13 +49,31 @@ class PinballUXApp(QMainWindow):
     def _show_loading_screen(self):
         """Show a simple loading screen while initializing"""
         loading_widget = QWidget()
-        loading_widget.setStyleSheet("background-color: black;")
+        loading_widget.setStyleSheet("background-color: #1a1a1a;")
         loading_layout = QVBoxLayout(loading_widget)
+        loading_layout.setContentsMargins(50, 50, 50, 50)
 
-        loading_label = QLabel("Loading PinballUX...")
+        # Title
+        title_label = QLabel("PinballUX")
+        title_label.setStyleSheet("color: #4ecdc4; font-size: 48px; font-weight: bold;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(title_label)
+
+        loading_layout.addSpacing(20)
+
+        # Loading message
+        loading_label = QLabel("Loading...")
         loading_label.setStyleSheet("color: white; font-size: 24px;")
         loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         loading_layout.addWidget(loading_label)
+
+        loading_layout.addSpacing(20)
+
+        # Status message
+        self.status_label = QLabel("Initializing application...")
+        self.status_label.setStyleSheet("color: #999; font-size: 16px;")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        loading_layout.addWidget(self.status_label)
 
         self.setCentralWidget(loading_widget)
 
@@ -63,43 +81,93 @@ class PinballUXApp(QMainWindow):
         """Set up the main application"""
         self.logger.info("Initializing PinballUX application")
 
-        # Initialize database
-        self.database_manager = DatabaseManager()
-        self.database_manager.initialize()
+        try:
+            # Initialize database
+            self._update_loading_status("Initializing database...")
+            self.database_manager = DatabaseManager()
+            self.database_manager.initialize()
 
-        # Initialize media manager
-        self.media_manager = MediaManager(self.config)
+            # Initialize media manager
+            self._update_loading_status("Initializing media manager...")
+            self.media_manager = MediaManager(self.config)
 
-        # Initialize table service with media manager
-        self.table_service = TableService(self.database_manager, self.media_manager)
+            # Initialize table service with media manager
+            self._update_loading_status("Loading table service...")
+            self.table_service = TableService(self.database_manager, self.media_manager)
 
-        # Initialize launch manager
-        self.launch_manager = LaunchManager(self.config, self.table_service)
+            # Initialize launch manager
+            self._update_loading_status("Initializing launch manager...")
+            self.launch_manager = LaunchManager(self.config, self.table_service)
 
-        # Initialize monitor manager
-        self.monitor_manager = MonitorManager(self.config)
+            # Initialize monitor manager
+            self._update_loading_status("Configuring displays...")
+            self.monitor_manager = MonitorManager(self.config)
 
-        # Show additional displays BEFORE creating wheel window so they're ready to receive content
-        if self.monitor_manager:
-            self.monitor_manager.show_displays()
+            # Show additional displays BEFORE creating wheel window so they're ready to receive content
+            if self.monitor_manager:
+                self.monitor_manager.show_displays()
 
-        # Set up the main window (wheel interface)
-        # This will load tables and emit table_highlighted signal, so displays must exist first
-        self.main_window = WheelMainWindow(self.config, self.monitor_manager, self.table_service, self.launch_manager)
-        self.setCentralWidget(self.main_window)
+            # Set up the main window (wheel interface)
+            # This will load tables and emit table_highlighted signal, so displays must exist first
+            self._update_loading_status("Loading table library...")
+            self.main_window = WheelMainWindow(self.config, self.monitor_manager, self.table_service, self.launch_manager)
+            self.setCentralWidget(self.main_window)
 
-        # Connect signals
-        self.main_window.table_selected.connect(self.table_selected.emit)
-        self.main_window.exit_requested.connect(self.exit_requested.emit)
-        self.exit_requested.connect(self.close)
+            # Connect signals
+            self.main_window.table_selected.connect(self.table_selected.emit)
+            self.main_window.exit_requested.connect(self.exit_requested.emit)
+            self.exit_requested.connect(self.close)
 
-        # Position on primary display initially
-        self._position_main_window()
+            # Position on primary display initially
+            self._position_main_window()
 
-        # Set fullscreen mode
-        self.showFullScreen()
+            # Set fullscreen mode
+            self.showFullScreen()
 
-        self.logger.info("PinballUX application initialized")
+            self.logger.info("PinballUX application initialized")
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize application: {e}", exc_info=True)
+            self._show_error_screen(str(e))
+
+    def _update_loading_status(self, message: str):
+        """Update loading screen status message"""
+        if hasattr(self, 'status_label'):
+            self.status_label.setText(message)
+            # Process events to update UI
+            QApplication.processEvents()
+
+    def _show_error_screen(self, error_message: str):
+        """Show error screen if initialization fails"""
+        error_widget = QWidget()
+        error_widget.setStyleSheet("background-color: #1a1a1a;")
+        error_layout = QVBoxLayout(error_widget)
+        error_layout.setContentsMargins(50, 50, 50, 50)
+
+        # Error title
+        title_label = QLabel("Initialization Error")
+        title_label.setStyleSheet("color: #ff6b6b; font-size: 32px; font-weight: bold;")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        error_layout.addWidget(title_label)
+
+        error_layout.addSpacing(20)
+
+        # Error message
+        error_label = QLabel(error_message)
+        error_label.setStyleSheet("color: white; font-size: 16px;")
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        error_label.setWordWrap(True)
+        error_layout.addWidget(error_label)
+
+        error_layout.addSpacing(20)
+
+        # Instructions
+        instruction_label = QLabel("Press ESC to exit\nCheck logs for details")
+        instruction_label.setStyleSheet("color: #999; font-size: 14px;")
+        instruction_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        error_layout.addWidget(instruction_label)
+
+        self.setCentralWidget(error_widget)
 
     def _position_main_window(self):
         """Position the main window on the configured playfield display"""
@@ -154,23 +222,47 @@ class PinballUXApp(QMainWindow):
         """Handle application close event"""
         self.logger.info("PinballUX application closing")
 
-        # Clean up main window first (contains media players and timers)
-        if self.main_window:
-            try:
-                # Trigger cleanup by closing the main window widget
-                self.main_window.close()
-            except Exception as e:
-                self.logger.error(f"Error closing main window: {e}")
+        # Prevent re-entry during close
+        if hasattr(self, '_closing'):
+            self.logger.debug("Already closing, accepting event immediately")
+            event.accept()
+            return
 
-        # Close all display windows
-        if self.monitor_manager:
-            self.monitor_manager.close_displays()
+        self._closing = True
 
-        # Save configuration
-        self.config.save()
+        try:
+            # Clean up main window first (contains media players and timers)
+            if self.main_window:
+                try:
+                    self.logger.debug("Closing main window...")
+                    # Trigger cleanup by closing the main window widget
+                    self.main_window.close()
+                    self.logger.debug("Main window closed")
+                except Exception as e:
+                    self.logger.error(f"Error closing main window: {e}", exc_info=True)
 
-        # Accept the close event
-        event.accept()
+            # Close all display windows
+            if self.monitor_manager:
+                self.logger.debug("Closing display windows...")
+                self.monitor_manager.close_displays()
+                self.logger.debug("Display windows closed")
+
+            # Save configuration
+            self.logger.debug("Saving configuration...")
+            self.config.save()
+            self.logger.debug("Configuration saved")
+
+        except Exception as e:
+            self.logger.error(f"Error during application close: {e}", exc_info=True)
+
+        finally:
+            # Always accept the close event
+            self.logger.info("Close event accepted")
+            event.accept()
+
+            # Force quit the application after cleanup
+            self.logger.debug("Calling QApplication.quit()...")
+            QApplication.quit()
 
     def keyPressEvent(self, event):
         """Handle key press events"""

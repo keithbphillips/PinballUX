@@ -2,7 +2,7 @@
 PinballX-style wheel widget for table selection
 """
 
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGraphicsView, QGraphicsScene, QGraphicsOpacityEffect
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGraphicsView, QGraphicsScene, QGraphicsOpacityEffect, QApplication
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRectF, QSizeF, QPropertyAnimation, QEasingCurve, QParallelAnimationGroup, QRect, pyqtProperty, QUrl
 from PyQt6.QtGui import QPixmap, QPainter, QColor, QFont, QBrush, QLinearGradient, QPen, QPainterPath, QTransform
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
@@ -1309,42 +1309,65 @@ class WheelWidget(QWidget):
 
     def closeEvent(self, event):
         """Handle widget close event"""
-        # Stop all timers to prevent hanging
-        if hasattr(self, 'media_update_timer'):
-            self.media_update_timer.stop()
+        logger.debug("WheelWidget closeEvent started")
 
-        if hasattr(self, 'wheel_background') and self.wheel_background:
-            if hasattr(self.wheel_background, 'glow_timer'):
-                self.wheel_background.glow_timer.stop()
+        try:
+            # Stop all timers to prevent hanging
+            if hasattr(self, 'media_update_timer') and self.media_update_timer:
+                self.media_update_timer.stop()
+                logger.debug("Stopped media_update_timer")
 
-        # Stop loading popup timers if they exist
-        # The loading popup might not exist as it's created dynamically
-        for child in self.findChildren(LoadingPopup):
-            if hasattr(child, 'spinner_timer'):
-                child.spinner_timer.stop()
-            if hasattr(child, 'fade_timer'):
-                child.fade_timer.stop()
-            if hasattr(child, 'fade_out_timer'):
-                child.fade_out_timer.stop()
+            if hasattr(self, 'wheel_background') and self.wheel_background:
+                if hasattr(self.wheel_background, 'glow_timer'):
+                    self.wheel_background.glow_timer.stop()
+                    logger.debug("Stopped wheel_background glow_timer")
 
-        # Stop animation group
-        if hasattr(self, 'animation_group') and self.animation_group:
-            self.animation_group.stop()
-            try:
-                self.animation_group.finished.disconnect()
-            except:
-                pass
+            # Stop loading popup timers if they exist
+            # The loading popup might not exist as it's created dynamically
+            for child in self.findChildren(LoadingPopup):
+                if hasattr(child, 'spinner_timer'):
+                    child.spinner_timer.stop()
+                if hasattr(child, 'fade_timer'):
+                    child.fade_timer.stop()
+                if hasattr(child, 'fade_out_timer'):
+                    child.fade_out_timer.stop()
+            logger.debug("Stopped loading popup timers")
 
-        # Stop background video and clean up media player
-        if hasattr(self, 'background_media_player'):
-            self.background_media_player.stop()
-            self.background_media_player.setSource(QUrl())
-            self.background_media_player.setVideoOutput(None)
-            self.background_media_player.setAudioOutput(None)
+            # Stop animation group
+            if hasattr(self, 'animation_group') and self.animation_group:
+                self.animation_group.stop()
+                try:
+                    self.animation_group.finished.disconnect()
+                except:
+                    pass
+                logger.debug("Stopped animation group")
 
-        # Clean up audio output
-        if hasattr(self, 'background_audio_output'):
-            self.background_audio_output = None
+            # Stop background video and clean up media player - DO THIS SYNCHRONOUSLY
+            if hasattr(self, 'background_media_player') and self.background_media_player:
+                logger.debug("Stopping background media player...")
+                try:
+                    # Stop playback first
+                    self.background_media_player.stop()
+                    # Wait a bit for stop to complete
+                    QApplication.processEvents()
+                    # Clear source
+                    self.background_media_player.setSource(QUrl())
+                    # Disconnect outputs
+                    self.background_media_player.setVideoOutput(None)
+                    self.background_media_player.setAudioOutput(None)
+                    logger.debug("Background media player stopped and cleared")
+                except Exception as e:
+                    logger.error(f"Error stopping background media player: {e}")
+
+            # Clean up audio output
+            if hasattr(self, 'background_audio_output'):
+                self.background_audio_output = None
+                logger.debug("Cleaned up audio output")
+
+            logger.debug("WheelWidget closeEvent completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error in WheelWidget closeEvent: {e}", exc_info=True)
 
         super().closeEvent(event)
 
@@ -1751,34 +1774,73 @@ class WheelMainWindow(QWidget):
 
     def closeEvent(self, event):
         """Handle close event"""
-        # Clean up audio players
-        if hasattr(self, 'audio_player'):
-            self.audio_player.stop()
-        if hasattr(self, 'nav_audio_player'):
-            self.nav_audio_player.stop()
-        if hasattr(self, 'table_audio_player'):
-            self.table_audio_player.stop()
+        logger.debug("WheelMainWindow closeEvent started")
 
-        # Clean up input manager
-        if hasattr(self, 'input_manager'):
-            self.input_manager.cleanup()
+        try:
+            # Stop input polling first to prevent any new events
+            if hasattr(self, 'input_manager') and self.input_manager:
+                logger.debug("Stopping input manager...")
+                self.input_manager.stop_polling()
+                logger.debug("Input polling stopped")
 
-        # Clean up wheel widget media players
-        if hasattr(self, 'wheel_widget'):
-            try:
-                self.wheel_widget.stop_background_video()
-                # Clean up background media player
-                if hasattr(self.wheel_widget, 'background_media_player'):
-                    self.wheel_widget.background_media_player.stop()
-                    self.wheel_widget.background_media_player.setSource(QUrl())
-                    self.wheel_widget.background_media_player.setVideoOutput(None)
-                    self.wheel_widget.background_media_player.setAudioOutput(None)
-                if hasattr(self.wheel_widget, 'background_audio_output'):
-                    self.wheel_widget.background_audio_output = None
-                if hasattr(self.wheel_widget, 'background_video_item'):
-                    self.wheel_widget.background_video_item.setParent(None)
-                    self.wheel_widget.background_video_item = None
-            except Exception as e:
-                pass  # Ignore cleanup errors
+            # Clean up audio players - stop them synchronously
+            if hasattr(self, 'audio_player') and self.audio_player:
+                logger.debug("Stopping audio player...")
+                self.audio_player.stop()
+                QApplication.processEvents()
+                logger.debug("Audio player stopped")
+
+            if hasattr(self, 'nav_audio_player') and self.nav_audio_player:
+                logger.debug("Stopping nav audio player...")
+                self.nav_audio_player.stop()
+                QApplication.processEvents()
+                logger.debug("Nav audio player stopped")
+
+            if hasattr(self, 'table_audio_player') and self.table_audio_player:
+                logger.debug("Stopping table audio player...")
+                self.table_audio_player.stop()
+                QApplication.processEvents()
+                logger.debug("Table audio player stopped")
+
+            # Clean up wheel widget media players
+            if hasattr(self, 'wheel_widget') and self.wheel_widget:
+                logger.debug("Cleaning up wheel widget...")
+                try:
+                    # Stop background video first
+                    self.wheel_widget.stop_background_video()
+                    QApplication.processEvents()
+
+                    # Clean up background media player
+                    if hasattr(self.wheel_widget, 'background_media_player') and self.wheel_widget.background_media_player:
+                        logger.debug("Stopping wheel background media player...")
+                        self.wheel_widget.background_media_player.stop()
+                        QApplication.processEvents()
+                        self.wheel_widget.background_media_player.setSource(QUrl())
+                        self.wheel_widget.background_media_player.setVideoOutput(None)
+                        self.wheel_widget.background_media_player.setAudioOutput(None)
+                        logger.debug("Wheel background media player stopped")
+
+                    if hasattr(self.wheel_widget, 'background_audio_output'):
+                        self.wheel_widget.background_audio_output = None
+
+                    if hasattr(self.wheel_widget, 'background_video_item') and self.wheel_widget.background_video_item:
+                        self.wheel_widget.background_video_item.setParent(None)
+                        self.wheel_widget.background_video_item = None
+
+                    logger.debug("Wheel widget cleaned up")
+
+                except Exception as e:
+                    logger.error(f"Error cleaning up wheel widget: {e}", exc_info=True)
+
+            # Clean up input manager last
+            if hasattr(self, 'input_manager') and self.input_manager:
+                logger.debug("Final input manager cleanup...")
+                self.input_manager.cleanup()
+                logger.debug("Input manager cleaned up")
+
+            logger.debug("WheelMainWindow closeEvent completed successfully")
+
+        except Exception as e:
+            logger.error(f"Error in WheelMainWindow closeEvent: {e}", exc_info=True)
 
         super().closeEvent(event)

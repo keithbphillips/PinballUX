@@ -1,3 +1,21 @@
+pinballux (0.2.7-1) unstable; urgency=medium
+
+  * Fix video playback hang when loading table previews
+  * Properly clean up QMediaPlayer resources when refreshing table grid
+  * Add cleanup() method to TableMediaWidget and AttractModeWidget
+  * Use deleteLater() for proper Qt widget destruction
+  * Prevent GStreamer resource accumulation causing application hangs
+  * Improve startup loading screen with detailed status messages
+  * Add error handling and visual feedback during initialization
+  * Fix potential "frozen screen" issue by showing loading progress
+  * Fix application hang on exit when pressing ESC key
+  * Fix playfield window not closing on exit - add QApplication.quit() call
+  * Add synchronous media player cleanup with processEvents() calls
+  * Add re-entry protection and comprehensive error handling in closeEvent
+  * Stop all timers, animations, and media players before exit
+
+ -- Keith Phillips <keith@example.com>  Tue, 21 Oct 2025 15:35:00 -0500
+
 pinballux (0.2.6-1) unstable; urgency=medium
 
   * Fix media preview refresh issue in Table Manager
