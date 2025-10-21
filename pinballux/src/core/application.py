@@ -260,9 +260,10 @@ class PinballUXApp(QMainWindow):
             self.logger.info("Close event accepted")
             event.accept()
 
-            # Force quit the application after cleanup
-            self.logger.debug("Calling QApplication.quit()...")
-            QApplication.quit()
+            # Force quit the application after cleanup - use QTimer to defer it
+            # This ensures all cleanup and event processing is complete first
+            self.logger.debug("Scheduling QApplication.quit()...")
+            QTimer.singleShot(100, lambda: QApplication.quit())
 
     def keyPressEvent(self, event):
         """Handle key press events"""

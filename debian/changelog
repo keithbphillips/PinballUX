@@ -13,6 +13,7 @@ pinballux (0.2.7-1) unstable; urgency=medium
   * Add synchronous media player cleanup with processEvents() calls
   * Add re-entry protection and comprehensive error handling in closeEvent
   * Stop all timers, animations, and media players before exit
+  * Fix exit freeze by deferring QApplication.quit() to avoid race conditions
 
  -- Keith Phillips <keith@example.com>  Tue, 21 Oct 2025 15:35:00 -0500
 
