@@ -573,6 +573,16 @@ class TableMediaWidget(MediaDisplayWidget):
         self.current_widget = None
         self.default_label.show()
 
+    def cleanup(self):
+        """Clean up media widget resources"""
+        try:
+            if self.video_widget:
+                self.video_widget.cleanup()
+            if self.image_widget:
+                self.image_widget.clear_image()
+        except Exception as e:
+            pass  # Ignore cleanup errors
+
 
 class AttractModeWidget(TableMediaWidget):
     """Widget for attract mode with automatic video cycling"""
@@ -646,3 +656,8 @@ class AttractModeWidget(TableMediaWidget):
 
         video_path = self.video_list[self.current_video_index]
         return self.load_media(video_path)
+
+    def cleanup(self):
+        """Clean up attract mode widget resources"""
+        self.stop_attract_mode()
+        super().cleanup()

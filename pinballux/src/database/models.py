@@ -34,6 +34,7 @@ class Table(Base):
     file_path = Column(String(500), nullable=False, unique=True)
     file_size = Column(Integer)
     file_modified = Column(DateTime)
+    custom_launcher = Column(String(500))  # Path to custom launch script (relative to table directory)
 
     # VPX metadata
     vpx_version = Column(String(20))
@@ -253,7 +254,8 @@ class DatabaseManager:
                     'table_audio': 'VARCHAR(500)',
                     'launch_audio': 'VARCHAR(500)',
                     'theme': 'VARCHAR(255)',
-                    'ipdb_number': 'INTEGER'
+                    'ipdb_number': 'INTEGER',
+                    'custom_launcher': 'VARCHAR(500)'
                 }
 
                 # Add missing columns

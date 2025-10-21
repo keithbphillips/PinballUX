@@ -251,7 +251,11 @@ class MainWindow(QWidget):
         """Populate the table grid with available tables"""
         # Clear existing widgets
         for widget in self.table_widgets:
+            # Clean up media resources before removing widget
+            if hasattr(widget, 'media_widget') and hasattr(widget.media_widget, 'cleanup'):
+                widget.media_widget.cleanup()
             widget.setParent(None)
+            widget.deleteLater()
         self.table_widgets.clear()
 
         # Load tables from database
@@ -281,7 +285,11 @@ class MainWindow(QWidget):
         """Update the table grid layout"""
         # Clear grid
         for widget in self.table_widgets:
+            # Clean up media resources before removing widget
+            if hasattr(widget, 'media_widget') and hasattr(widget.media_widget, 'cleanup'):
+                widget.media_widget.cleanup()
             widget.setParent(None)
+            widget.deleteLater()
         self.table_widgets.clear()
 
         # Calculate grid dimensions

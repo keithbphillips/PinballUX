@@ -41,7 +41,7 @@ class VPXLauncher(QObject):
         self.monitor_timer.timeout.connect(self._monitor_process)
 
     def launch_table(self, table_path: str, options: Dict[str, Any] = None) -> bool:
-        """Launch a VPX table with Visual Pinball Standalone"""
+        """Launch a VPX table with Visual Pinball Standalone or custom launcher"""
         try:
             # Check if a table is already running
             if self.is_table_running():
@@ -55,6 +55,13 @@ class VPXLauncher(QObject):
                 self.launch_failed.emit(table_path, error_msg)
                 return False
 
+            options = options or {}
+
+            # Check for custom launcher script
+            custom_launcher = options.get('custom_launcher')
+            if custom_launcher:
+                return self._launch_with_custom_script(table_path, custom_launcher, options)
+
             # Get VP Standalone executable path
             vp_executable = self._get_vp_executable()
             if not vp_executable:
@@ -64,7 +71,7 @@ class VPXLauncher(QObject):
                 return False
 
             # Build command line arguments
-            command_args = self._build_command_args(table_path, options or {})
+            command_args = self._build_command_args(table_path, options)
 
             self.logger.info(f"Launching table: {table_path}")
             self.logger.debug(f"Command: {vp_executable} {' '.join(command_args)}")
@@ -235,18 +242,77 @@ class VPXLauncher(QObject):
             self.logger.warning(f"Table crashed with code {exit_code}, duration: {duration}s")
             self.table_crashed.emit(table_path, f"Process crashed with exit code {exit_code}")
 
+    def _launch_with_custom_script(self, table_path: str, custom_launcher: str, options: Dict[str, Any]) -> bool:
+        """Launch table using a custom script"""
+        try:
+            # Get table directory
+            table_dir = str(Path(table_path).parent)
+
+            # Build launcher path (relative to table directory)
+            launcher_path = Path(table_dir) / custom_launcher
+
+            if not launcher_path.exists():
+                error_msg = f"Custom launcher script not found: {launcher_path}"
+                self.logger.error(error_msg)
+                self.launch_failed.emit(table_path, error_msg)
+                return False
+
+            if not os.access(launcher_path, os.X_OK):
+                error_msg = f"Custom launcher script is not executable: {launcher_path}"
+                self.logger.error(error_msg)
+                self.launch_failed.emit(table_path, error_msg)
+                return False
+
+            self.logger.info(f"Launching table with custom script: {launcher_path}")
+
+            # Create QProcess
+            self.current_process = QProcess()
+            self.current_process.finished.connect(self._on_process_finished)
+            self.current_process.errorOccurred.connect(self._on_process_error)
+
+            # Set working directory to table directory
+            self.current_process.setWorkingDirectory(table_dir)
+
+            # Start the custom launcher script
+            # The script should handle launching the table appropriately
+            self.current_process.start(str(launcher_path), [])
+
+            if not self.current_process.waitForStarted(5000):
+                error_msg = f"Failed to start custom launcher: {self.current_process.errorString()}"
+                self.logger.error(error_msg)
+                self.launch_failed.emit(table_path, error_msg)
+                self.current_process = None
+                return False
+
+            # Track launch state
+            self.current_table_path = table_path
+            self.launch_time = datetime.now()
+
+            # Start monitoring
+            self.monitor_timer.start(1000)
+
+            self.logger.info(f"Table launched successfully with custom script: {Path(table_path).name}")
+            self.table_launched.emit(table_path)
+            return True
+
+        except Exception as e:
+            error_msg = f"Failed to launch with custom script: {str(e)}"
+            self.logger.error(error_msg)
+            self.launch_failed.emit(table_path, error_msg)
+            return False
+
     def _on_process_error(self, error: QProcess.ProcessError):
         """Handle process error signal"""
         self.monitor_timer.stop()
 
         table_path = self.current_table_path
         error_messages = {
-            QProcess.ProcessError.FailedToStart: "Failed to start Visual Pinball",
-            QProcess.ProcessError.Crashed: "Visual Pinball crashed",
-            QProcess.ProcessError.Timedout: "Visual Pinball timed out",
-            QProcess.ProcessError.ReadError: "Read error from Visual Pinball",
-            QProcess.ProcessError.WriteError: "Write error to Visual Pinball",
-            QProcess.ProcessError.UnknownError: "Unknown error with Visual Pinball"
+            QProcess.ProcessError.FailedToStart: "Failed to start process",
+            QProcess.ProcessError.Crashed: "Process crashed",
+            QProcess.ProcessError.Timedout: "Process timed out",
+            QProcess.ProcessError.ReadError: "Read error from process",
+            QProcess.ProcessError.WriteError: "Write error to process",
+            QProcess.ProcessError.UnknownError: "Unknown error with process"
         }
 
         error_msg = error_messages.get(error, f"Process error: {error}")
@@ -293,6 +359,12 @@ class LaunchManager:
         if not table:
             self.logger.error(f"Table not found with ID: {table_id}")
             return False
+
+        # Merge custom launcher from table if present
+        options = options or {}
+        if table.custom_launcher and not options.get('custom_launcher'):
+            options['custom_launcher'] = table.custom_launcher
+            self.logger.info(f"Using custom launcher for table: {table.custom_launcher}")
 
         self.current_session_table_id = table_id
         return self.launcher.launch_table(table.file_path, options)
