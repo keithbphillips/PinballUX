@@ -453,7 +453,8 @@ class WheelWidget(QWidget):
 
     # Signals
     table_selected = pyqtSignal(dict)  # table_data
-    table_highlighted = pyqtSignal(dict)  # table_data
+    table_highlighted = pyqtSignal(dict)  # table_data (emitted after delay when wheel stops)
+    table_navigation = pyqtSignal()  # emitted immediately when wheel moves (for sound only)
     rotation_changed = pyqtSignal(int)  # rotation_angle
 
     def __init__(self, parent=None):
@@ -475,7 +476,7 @@ class WheelWidget(QWidget):
         self.media_update_timer = QTimer()
         self.media_update_timer.setSingleShot(True)
         self.media_update_timer.timeout.connect(self._delayed_media_update)
-        self.media_update_delay = 100  # ms delay after animation stops
+        self.media_update_delay = 500  # ms delay after animation stops (allows quick navigation)
 
         # Rotation system (like PinballX)
         self.rotation_angle = 0  # 0, 90, 180, 270 degrees
@@ -701,6 +702,9 @@ class WheelWidget(QWidget):
             self.media_update_timer.stop()
             self.logger.debug("Cancelled pending media update due to new wheel movement")
 
+        # Emit navigation signal immediately for sound feedback
+        self.table_navigation.emit()
+
         self.is_animating = True
         center_x = container_width // 2
         # Position items very close to bottom, matching arc position (within 150px of bottom)
@@ -824,8 +828,16 @@ class WheelWidget(QWidget):
 
     def _delayed_media_update(self):
         """Update media after wheel has stopped moving"""
-        self.logger.debug("Delayed media update triggered")
+        self.logger.debug("Delayed media update triggered - loading heavy media now")
+
+        # Update both text and media (playfield video/image)
         self.update_table_info()
+
+        # Emit signal to update other displays (backglass, DMD) via WheelMainWindow
+        # This will trigger on_table_highlighted with is_animating=False
+        if self.tables and 0 <= self.current_index < len(self.tables):
+            table = self.tables[self.current_index]
+            self.table_highlighted.emit(table)
 
     def _animation_safety_reset(self):
         """Safety reset for animation flag in case animation doesn't complete properly"""
@@ -934,13 +946,12 @@ class WheelWidget(QWidget):
         """Stop background video playback (legacy method)"""
         self.stop_background_media()
 
-    def update_table_info(self):
-        """Update the table information display"""
+    def update_table_info_text_only(self):
+        """Update only the table information text (no media loading)"""
         if not self.tables or self.current_index >= len(self.tables):
             self.table_name_label.setText("No Tables Available")
             self.table_info_label.setText("")
             self.table_metadata_label.setText("")
-            self.stop_background_video()
             return
 
         table = self.tables[self.current_index]
@@ -990,6 +1001,20 @@ class WheelWidget(QWidget):
         metadata_text = " • ".join(metadata_parts)
         self.table_metadata_label.setText(metadata_text)
 
+    def update_table_info(self):
+        """Update the table information display with media (called after delay)"""
+        if not self.tables or self.current_index >= len(self.tables):
+            self.table_name_label.setText("No Tables Available")
+            self.table_info_label.setText("")
+            self.table_metadata_label.setText("")
+            self.stop_background_video()
+            return
+
+        # Update text info first
+        self.update_table_info_text_only()
+
+        table = self.tables[self.current_index]
+
         # Prefer video over image for background
         table_video_path = table.get('table_video', '')
         table_image_path = table.get('image', '')  # playfield image
@@ -1001,9 +1026,6 @@ class WheelWidget(QWidget):
         else:
             # No media available, stop any current media
             self.stop_background_media()
-
-        # Emit highlighted signal
-        self.table_highlighted.emit(table)
 
     def move_wheel_left(self):
         """Move wheel selection to the left with animation (wraps around)"""
@@ -1427,6 +1449,7 @@ class WheelMainWindow(QWidget):
         self.wheel_widget = WheelWidget()
         self.wheel_widget.table_selected.connect(self.on_table_selected)
         self.wheel_widget.table_highlighted.connect(self.on_table_highlighted)
+        self.wheel_widget.table_navigation.connect(self.on_table_navigation)
         self.wheel_widget.rotation_changed.connect(self.on_rotation_changed)
 
         # Set rotation from config if available
@@ -1631,24 +1654,37 @@ class WheelMainWindow(QWidget):
         if self.nav_sound_path and self.nav_audio_player:
             self.nav_audio_player.play_once(self.nav_sound_path)
 
-    def on_table_highlighted(self, table_data: dict):
-        """Handle table highlight change from wheel"""
-        table_name = table_data.get('name', 'Unknown')
+    def on_table_navigation(self):
+        """Handle immediate navigation feedback when wheel moves
 
-        # Play navigation sound
+        This is called immediately when user presses navigation buttons.
+        Only plays sound and stops table audio - no heavy media loading.
+        """
+        self.logger.debug("Quick navigation - playing flipper sound, stopping table audio")
+
+        # Play navigation sound immediately
         self._play_navigation_sound()
 
-        # Play table audio if enabled and available, otherwise stop any playing audio
+        # Stop table audio immediately when navigating
+        if self.table_audio_player.is_playing():
+            self.table_audio_player.stop()
+            self.logger.debug("Stopped table audio during navigation")
+
+    def on_table_highlighted(self, table_data: dict):
+        """Handle table highlight after wheel stops moving
+
+        This is only called after the delay when wheel stops.
+        Loads all heavy media (backglass, DMD, table audio, etc.)
+        """
+        table_name = table_data.get('name', 'Unknown')
+        self.logger.debug(f"Wheel stopped on {table_name} - loading all media")
+
+        # Play table audio if enabled and available
         if self.config.audio.table_audio:
             table_audio = table_data.get('table_audio', '')
             if table_audio:
                 self.table_audio_player.play_once(table_audio)
                 self.logger.debug(f"Playing table audio: {table_audio}")
-            else:
-                # Stop table audio if no audio is available for this table
-                if self.table_audio_player.is_playing():
-                    self.table_audio_player.stop()
-                    self.logger.debug("Stopped table audio - no audio for this table")
 
         # Update displays with highlighted table info
         if self.monitor_manager:

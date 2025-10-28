@@ -1,3 +1,24 @@
+pinballux (0.3.0-1) unstable; urgency=medium
+
+  * Implement smooth wheel navigation with delayed media loading
+  * Add immediate flipper sound feedback when navigating through tables
+  * Stop table audio immediately during quick navigation
+  * Load heavy media (backglass, DMD, playfield videos) only after wheel stops
+  * 500ms delay allows rapid scrolling through multiple tables without lag
+  * Fix hanging issue caused by signal loops during navigation
+  * Separate immediate navigation feedback from delayed media loading
+  * Improved responsiveness and user experience when browsing tables
+
+ -- Keith Phillips <keith@example.com>  Mon, 28 Oct 2025 14:30:00 -0500
+
+pinballux (0.2.9-1) unstable; urgency=medium
+
+  * Add custom icons for all three applications (pinballux, setup, manager)
+  * Update debian package to install icons from Icons directory
+  * Update pinballux-setup.desktop to use correct icon
+
+ -- Keith Phillips <keith@example.com>  Tue, 21 Oct 2025 11:15:00 -0500
+
 pinballux (0.2.8-1) unstable; urgency=medium
 
   * Fix application freeze on exit by ignoring close event
