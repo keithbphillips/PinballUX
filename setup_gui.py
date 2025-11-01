@@ -283,6 +283,100 @@ class VPXIniManager:
             print(f"Error reading joystick config from VPinballX.ini: {e}")
             return {}
 
+    def read_bgset(self) -> int:
+        """Read BGSet value from VPinballX.ini
+
+        Returns:
+            0 for Desktop mode, 1 for Cabinet mode
+        """
+        if not self.ini_path.exists():
+            return 0  # Default to Desktop
+
+        try:
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
+
+            # Parse the file
+            for line in lines:
+                line = line.strip()
+                if '=' in line and not line.startswith(';'):
+                    key_part = line.split('=')[0].strip()
+                    value_part = line.split('=', 1)[1].strip()
+
+                    if key_part == 'BGSet' and value_part:
+                        try:
+                            return int(value_part)
+                        except ValueError:
+                            return 0
+
+            return 0  # Default to Desktop if not found
+
+        except Exception as e:
+            print(f"Error reading BGSet from VPinballX.ini: {e}")
+            return 0
+
+    def write_bgset(self, bgset: int) -> bool:
+        """Write BGSet value to VPinballX.ini
+
+        Args:
+            bgset: 0 for Desktop mode, 1 for Cabinet mode
+
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self.ini_path.exists():
+            return False
+
+        try:
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.ini_path.parent / f"VPinballX.ini.backup_{timestamp}"
+            shutil.copy2(self.ini_path, backup_path)
+
+            # Read the file
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
+
+            # Track if we updated an existing line
+            updated = False
+
+            # Update existing BGSet line
+            for i, line in enumerate(lines):
+                line_stripped = line.strip()
+                if '=' in line_stripped and not line_stripped.startswith(';'):
+                    key_part = line_stripped.split('=')[0].strip()
+
+                    if key_part == 'BGSet':
+                        lines[i] = f"BGSet = {bgset}\n"
+                        updated = True
+                        break
+
+            # If BGSet doesn't exist, add it to [Standalone] section
+            if not updated:
+                standalone_idx = None
+                next_section_idx = None
+
+                for i, line in enumerate(lines):
+                    if line.strip() == '[Standalone]':
+                        standalone_idx = i
+                    elif standalone_idx is not None and line.strip().startswith('['):
+                        next_section_idx = i
+                        break
+
+                if standalone_idx is not None:
+                    insert_idx = next_section_idx if next_section_idx else len(lines)
+                    lines.insert(insert_idx, f"BGSet = {bgset}\n")
+
+            # Write back
+            with open(self.ini_path, 'w') as f:
+                f.writelines(lines)
+
+            return True
+
+        except Exception as e:
+            print(f"Error writing BGSet to VPinballX.ini: {e}")
+            return False
+
 
 class ScreenResManager:
     """Manager for reading/writing ScreenRes.txt for B2S Server"""
@@ -576,6 +670,36 @@ class DisplayConfigTab(QWidget):
             })
         return screens
 
+    def _get_smart_default_screen(self, display_type: str) -> int:
+        """Get smart default screen assignment based on available screens
+
+        Logic:
+        - 1 screen: playfield only on primary (screen 0)
+        - 2 screens: playfield on primary (0), backglass on secondary (1)
+        - 3 screens: playfield (0), backglass (1), dmd (2)
+        - 4+ screens: playfield (0), backglass (1), dmd (2), topper (3)
+
+        fulldmd uses same screen as dmd if available
+        """
+        num_screens = len(self.screens)
+
+        # Priority order for screen assignment
+        display_priority = {
+            'playfield': 0,      # Always screen 0 (primary)
+            'backglass': 1,      # Screen 1 if available
+            'dmd': 2,            # Screen 2 if available
+            'fulldmd': 2,        # Same as dmd
+            'topper': 3          # Screen 3 if available
+        }
+
+        default_screen = display_priority.get(display_type, 0)
+
+        # If the default screen doesn't exist, fall back to screen 0
+        if default_screen >= num_screens:
+            return 0
+
+        return default_screen
+
     def init_ui(self):
         layout = QVBoxLayout()
 
@@ -618,9 +742,14 @@ class DisplayConfigTab(QWidget):
         # Get current config
         current = getattr(self.config.displays, display_type)
 
-        # Enabled checkbox
+        # Enabled checkbox with smart defaults
         enabled = QCheckBox()
-        enabled.setChecked(current.enabled if current else False)
+        if current is not None:
+            # Use existing config
+            enabled.setChecked(current.enabled)
+        else:
+            # Smart defaults: only playfield is enabled by default
+            enabled.setChecked(display_type == 'playfield')
         ux_layout.addRow("Enabled:", enabled)
 
         # Screen selection dropdown
@@ -631,10 +760,18 @@ class DisplayConfigTab(QWidget):
                 screen['index']
             )
 
-        # Set current screen by finding the combo index that matches screen_number
+        # Set current screen with smart defaults
         if current:
+            # Use existing config
             for i in range(screen_combo.count()):
                 if screen_combo.itemData(i) == current.screen_number:
+                    screen_combo.setCurrentIndex(i)
+                    break
+        else:
+            # Smart screen assignment based on number of available screens
+            default_screen = self._get_smart_default_screen(display_type)
+            for i in range(screen_combo.count()):
+                if screen_combo.itemData(i) == default_screen:
                     screen_combo.setCurrentIndex(i)
                     break
         ux_layout.addRow("Screen:", screen_combo)
@@ -1018,11 +1155,37 @@ class VPXConfigTab(QWidget):
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
+        self.vpx_manager = VPXIniManager()
         self.download_thread = None
         self.init_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
+
+        # VPX Mode (Desktop vs Cabinet)
+        mode_group = QGroupBox("VPinball Mode")
+        mode_layout = QVBoxLayout()
+
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("Desktop View (BGSet=0)", 0)
+        self.mode_combo.addItem("Cabinet Mode (BGSet=1)", 1)
+
+        # Read current BGSet value from VPinballX.ini
+        current_bgset = self.vpx_manager.read_bgset()
+        self.mode_combo.setCurrentIndex(current_bgset)
+
+        mode_layout.addWidget(QLabel("Display Mode:"))
+        mode_layout.addWidget(self.mode_combo)
+
+        mode_info = QLabel(
+            "• Desktop View: Single playfield display only\n"
+            "• Cabinet Mode: Multi-screen pinball cabinet setup"
+        )
+        mode_info.setStyleSheet("color: #666; font-size: 11px;")
+        mode_layout.addWidget(mode_info)
+
+        mode_group.setLayout(mode_layout)
+        layout.addWidget(mode_group)
 
         # VPX Executable
         exe_group = QGroupBox("Visual Pinball Executable")
@@ -1178,6 +1341,10 @@ class VPXConfigTab(QWidget):
         self.config.vpx.executable_path = self.exe_path.text()
         self.config.vpx.table_directory = self.table_dir.text()
         self.config.vpx.media_directory = self.media_dir.text()
+
+        # Save BGSet value to VPinballX.ini
+        bgset = self.mode_combo.currentData()
+        self.vpx_manager.write_bgset(bgset)
 
 
 class KeyboardConfigTab(QWidget):
