@@ -180,8 +180,10 @@ class Config:
         """Create default configuration"""
         self.displays = DisplayConfig(
             playfield=MonitorConfig("Playfield", screen_number=0, rotation=0, enabled=True),
-            backglass=MonitorConfig("Backglass", screen_number=1, rotation=0, enabled=True),
-            dmd=MonitorConfig("DMD", screen_number=2, rotation=0, enabled=False)
+            backglass=None,  # Disabled by default
+            dmd=None,  # Disabled by default
+            fulldmd=None,  # Disabled by default
+            topper=None  # Disabled by default
         )
 
         # Get project root directory

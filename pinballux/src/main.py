@@ -21,10 +21,12 @@ try:
     from pinballux.src.core.application import PinballUXApp
     from pinballux.src.core.config import Config
     from pinballux.src.core.logger import setup_logging
+    from pinballux.src.core.single_instance import SingleInstanceLock
 except ModuleNotFoundError:
     from src.core.application import PinballUXApp
     from src.core.config import Config
     from src.core.logger import setup_logging
+    from src.core.single_instance import SingleInstanceLock
 
 
 def qt_message_handler(mode, context, message):
@@ -111,6 +113,12 @@ def main():
     # Set up logging
     setup_logging()
 
+    # Check for single instance - exit if another instance is running
+    single_instance = SingleInstanceLock("PinballUX")
+    if not single_instance.acquire():
+        logging.warning("Another instance of PinballUX is already running. Exiting.")
+        sys.exit(1)
+
     # Set up VPinMAME roms symlink
     setup_vpinmame_roms_symlink()
 
@@ -124,7 +132,12 @@ def main():
     pinball_app.show()
 
     # Start the event loop
-    sys.exit(app.exec())
+    exit_code = app.exec()
+
+    # Release the single instance lock before exiting
+    single_instance.release()
+
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":
