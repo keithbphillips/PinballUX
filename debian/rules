@@ -47,15 +47,11 @@ override_dh_auto_install:
 	install -m 644 debian/pinballux-setup.desktop debian/pinballux/usr/share/applications/
 	install -m 644 debian/pinballux-manager.desktop debian/pinballux/usr/share/applications/
 
-	# Install icons
+	# Install icons from the Icons directory
 	install -d debian/pinballux/usr/share/pixmaps
-	install -m 644 pinballux.png debian/pinballux/usr/share/pixmaps/pinballux.png
-	# TableManager icon (if it exists, copy it, otherwise use pinballux.png)
-	if [ -f pinballux/data/media/images/ui/TableManager.png ]; then \
-		install -m 644 pinballux/data/media/images/ui/TableManager.png debian/pinballux/usr/share/pixmaps/pinballux-manager.png; \
-	else \
-		install -m 644 pinballux.png debian/pinballux/usr/share/pixmaps/pinballux-manager.png; \
-	fi
+	install -m 644 pinballux/data/media/images/Icons/pinballux.png debian/pinballux/usr/share/pixmaps/pinballux.png
+	install -m 644 pinballux/data/media/images/Icons/pinballux-setup.png debian/pinballux/usr/share/pixmaps/pinballux-setup.png
+	install -m 644 pinballux/data/media/images/Icons/pinballux-manager.png debian/pinballux/usr/share/pixmaps/pinballux-manager.png
 
 	# Create data directories with proper structure (at /opt/pinballux/data/)
 	install -d debian/pinballux/opt/pinballux/data/tables

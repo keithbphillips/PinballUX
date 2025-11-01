@@ -4,6 +4,6 @@ Type=Application
 Name=PinballUX Setup
 Comment=Configure PinballUX displays, input, and VPinball installation
 Exec=pinballux-setup
-Icon=pinballux
+Icon=pinballux-setup
 Terminal=false
 Categories=Settings;Game;
