@@ -1,3 +1,12 @@
+pinballux (0.3.2-1) unstable; urgency=medium
+
+  * Extend wheel widget border to full screen width for immersive display
+  * Wheel background now uses 100% width instead of 50%
+  * Border extends from left edge to right edge of screen
+  * Improved visual presentation of table selection interface
+
+ -- Keith Phillips <keith@example.com>  Fri, 01 Nov 2025 14:00:00 -0500
+
 pinballux (0.3.1-1) unstable; urgency=medium
 
   * Add VPinball mode selector to setup GUI (Desktop vs Cabinet)
