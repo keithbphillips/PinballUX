@@ -207,7 +207,7 @@ class WheelBackground(QWidget):
         center_x = width // 2
 
         # Create a stage with flat bottom and curved top
-        arc_width = width * 0.95  # Wide but within bounds
+        arc_width = width  # Extend to full width of container
 
         # Bottom line extends to bottom of screen
         bottom_y = height
@@ -1295,9 +1295,9 @@ class WheelWidget(QWidget):
 
         # Wheel container placement - extend to just above info panel with 20px gap
         if hasattr(self, 'wheel_proxy'):
-            # Use half width of the screen, centered
-            wheel_width = width * 0.5
-            wheel_x = (width - wheel_width) / 2
+            # Use full width of the screen
+            wheel_width = width
+            wheel_x = 0
 
             # Extend container from top to 20px above info panel
             top_margin = 20.0
