@@ -1,3 +1,13 @@
+pinballux (0.3.1-1) unstable; urgency=medium
+
+  * Add VPinball mode selector to setup GUI (Desktop vs Cabinet)
+  * Add single instance lock to prevent multiple PinballUX instances
+  * Update default display config to only enable playfield by default
+  * Update icon paths and simplify debian/rules
+  * Allow users to configure BGSet=0 (Desktop) or BGSet=1 (Cabinet) mode
+
+ -- Keith Phillips <keith@example.com>  Fri, 01 Nov 2025 12:00:00 -0500
+
 pinballux (0.3.0-1) unstable; urgency=medium
 
   * Implement smooth wheel navigation with delayed media loading
