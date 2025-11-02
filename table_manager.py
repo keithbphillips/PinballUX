@@ -18,7 +18,7 @@ import zipfile
 
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem,
+    QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
     QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog
 )
@@ -140,9 +140,20 @@ def match_file_to_table(filename: str, table) -> float:
     return direct_score
 
 
-def get_local_media_path(media_type: str, filename: str) -> Path:
-    """Get the local path for a media file based on type"""
-    base_path = Path(project_root) / "data" / "media"
+def get_local_media_path(media_type: str, filename: str, config: Config = None) -> Path:
+    """Get the local path for a media file based on type
+
+    Args:
+        media_type: Type of media (launch_audio, table_audio, backglass, table, dmd, topper, wheel)
+        filename: Name of the media file
+        config: Config object (if None, uses default project path)
+    """
+    # Use configured media directory or fall back to default
+    if config and config.vpx.media_directory:
+        base_path = Path(config.vpx.media_directory)
+    else:
+        base_path = Path("/opt/pinballux/data/media")
+
     ext = Path(filename).suffix.lower()
 
     if media_type == 'launch_audio':
@@ -601,8 +612,10 @@ class TableSelectorDialog(QDialog):
 class MediaReviewWidget(QWidget):
     """Widget for reviewing downloaded media files"""
 
-    def __init__(self):
+    def __init__(self, config: Config = None, parent_window=None):
         super().__init__()
+        self.config = config or Config()
+        self.parent_window = parent_window  # Reference to MainWindow for accessing selected_table
         self.files: List[DownloadedFile] = []
         self.current_file: Optional[DownloadedFile] = None
         self.media_player = QMediaPlayer()
@@ -620,20 +633,34 @@ class MediaReviewWidget(QWidget):
 
         # Buttons at top
         button_layout = QHBoxLayout()
-        self.save_btn = QPushButton("Save")
-        self.save_btn.clicked.connect(self.save_current)
+
+        # Selection buttons
+        self.select_all_btn = QPushButton("Select All")
+        self.select_all_btn.clicked.connect(self.select_all)
+        button_layout.addWidget(self.select_all_btn)
+
+        self.deselect_all_btn = QPushButton("Deselect All")
+        self.deselect_all_btn.clicked.connect(self.deselect_all)
+        button_layout.addWidget(self.deselect_all_btn)
+
+        # Save and delete buttons
+        self.save_btn = QPushButton("Save Selected")
+        self.save_btn.clicked.connect(self.save_selected)
         self.save_btn.setEnabled(False)
+        button_layout.addWidget(self.save_btn)
+
         self.delete_all_btn = QPushButton("Delete All")
         self.delete_all_btn.clicked.connect(self.delete_all)
-        button_layout.addWidget(self.save_btn)
         button_layout.addWidget(self.delete_all_btn)
+
         left_panel.addLayout(button_layout)
 
         self.file_tree = QTreeWidget()
-        self.file_tree.setHeaderLabel("Downloaded Files")
-        self.file_tree.itemClicked.connect(self.on_file_selected)
+        self.file_tree.setHeaderLabels(["", "Downloaded Files"])  # Column 0 for checkbox, 1 for name
+        self.file_tree.itemClicked.connect(self.on_file_clicked)
         self.file_tree.header().setStretchLastSection(True)
-        self.file_tree.setColumnCount(1)
+        self.file_tree.setColumnCount(2)
+        self.file_tree.setColumnWidth(0, 30)  # Narrow column for checkbox
         left_panel.addWidget(self.file_tree)
 
         # Middle panel - Downloaded file preview
@@ -706,6 +733,18 @@ class MediaReviewWidget(QWidget):
 
         right_panel.addWidget(self.existing_preview)
 
+        # Fourth panel - Existing media tree for selected table
+        fourth_panel = QVBoxLayout()
+
+        existing_media_label = QLabel("Current Media for Selected Table")
+        existing_media_label.setStyleSheet("font-weight: bold; padding: 5px;")
+        fourth_panel.addWidget(existing_media_label)
+
+        self.existing_media_tree = QTreeWidget()
+        self.existing_media_tree.setHeaderLabel("Existing Files")
+        self.existing_media_tree.itemClicked.connect(self.on_existing_media_clicked)
+        fourth_panel.addWidget(self.existing_media_tree)
+
         # Add panels to splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(20)  # Add spacing between panels
@@ -715,16 +754,20 @@ class MediaReviewWidget(QWidget):
         middle_widget.setLayout(middle_panel)
         right_widget = QWidget()
         right_widget.setLayout(right_panel)
+        fourth_widget = QWidget()
+        fourth_widget.setLayout(fourth_panel)
 
         splitter.addWidget(left_widget)
         splitter.addWidget(middle_widget)
         splitter.addWidget(right_widget)
+        splitter.addWidget(fourth_widget)
 
         # Make panels resizable with initial sizes
-        splitter.setStretchFactor(0, 1)
-        splitter.setStretchFactor(1, 2)
-        splitter.setStretchFactor(2, 2)
-        splitter.setSizes([300, 450, 450])  # Initial sizes
+        splitter.setStretchFactor(0, 1)  # Downloaded files
+        splitter.setStretchFactor(1, 2)  # Downloaded preview
+        splitter.setStretchFactor(2, 2)  # Existing preview
+        splitter.setStretchFactor(3, 1)  # Existing media tree
+        splitter.setSizes([300, 400, 400, 300])  # Initial sizes
         splitter.setChildrenCollapsible(False)  # Prevent panels from collapsing
 
         layout.addWidget(splitter)
@@ -776,6 +819,68 @@ class MediaReviewWidget(QWidget):
         self.existing_video_widget.hide()
         self.save_btn.setEnabled(False)
 
+    def update_existing_media_tree(self):
+        """Update the existing media tree for the selected table"""
+        self.existing_media_tree.clear()
+
+        if not self.parent_window or not self.parent_window.selected_table:
+            return
+
+        table = self.parent_window.selected_table
+
+        # Define media categories and their corresponding table fields
+        media_fields = {
+            'Backglass': [
+                ('backglass_image', '🖼️'),
+                ('backglass_video', '🎬')
+            ],
+            'Table': [
+                ('playfield_image', '🖼️'),
+                ('table_video', '🎬')
+            ],
+            'DMD': [
+                ('dmd_image', '🖼️'),
+                ('dmd_video', '🎬')
+            ],
+            'Topper': [
+                ('topper_image', '🖼️'),
+                ('topper_video', '🎬')
+            ],
+            'Wheel': [
+                ('wheel_image', '🖼️')
+            ],
+            'Audio': [
+                ('launch_audio', '🔊 Launch'),
+                ('table_audio', '🔊 Table')
+            ]
+        }
+
+        # Populate tree
+        for category, fields in media_fields.items():
+            category_item = None
+            has_media = False
+
+            for field_name, icon in fields:
+                media_path = getattr(table, field_name)
+                if media_path:
+                    # Create category item if not created yet
+                    if not category_item:
+                        category_item = QTreeWidgetItem(self.existing_media_tree, [category])
+                        category_item.setExpanded(True)
+                        has_media = True
+
+                    # Add media file
+                    filename = Path(media_path).name
+                    file_item = QTreeWidgetItem(category_item, [f"{icon} {filename}"])
+                    # Store the full path in UserRole for preview
+                    file_item.setData(0, Qt.ItemDataRole.UserRole, media_path)
+
+            # If no media in this category, show "None"
+            if not has_media:
+                category_item = QTreeWidgetItem(self.existing_media_tree, [category])
+                category_item.setExpanded(False)
+                QTreeWidgetItem(category_item, ["(none)"])
+
     def update_file_tree(self):
         """Update the file tree with current files"""
         self.file_tree.clear()
@@ -789,7 +894,7 @@ class MediaReviewWidget(QWidget):
 
         # Create tree items
         for media_type, files in sorted(media_types.items()):
-            type_item = QTreeWidgetItem(self.file_tree, [media_type.upper()])
+            type_item = QTreeWidgetItem(self.file_tree, ["", media_type.upper()])
             type_item.setExpanded(True)
 
             for file in files:
@@ -805,20 +910,40 @@ class MediaReviewWidget(QWidget):
                     type_icon = "📄"
 
                 status_icon = "✓" if file.status == "saved" else "✗" if file.status == "skipped" else "○"
-                file_item = QTreeWidgetItem(type_item, [f"{status_icon} {type_icon} {file.ftp_filename}"])
-                file_item.setData(0, Qt.ItemDataRole.UserRole, file)
+                file_item = QTreeWidgetItem(type_item, ["", f"{status_icon} {type_icon} {file.ftp_filename}"])
+                file_item.setData(1, Qt.ItemDataRole.UserRole, file)
 
-        # Resize column to fit content
+                # Add checkbox for files that haven't been saved
+                if file.status == "pending":
+                    file_item.setFlags(file_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+                    file_item.setCheckState(0, Qt.CheckState.Unchecked)
+
+        # Resize columns to fit content
         self.file_tree.resizeColumnToContents(0)
+        self.file_tree.resizeColumnToContents(1)
 
-    def on_file_selected(self, item: QTreeWidgetItem, column: int):
-        """Handle file selection"""
-        file = item.data(0, Qt.ItemDataRole.UserRole)
+        # Enable save button if there are files
+        self.update_save_button_state()
+
+        # Also update the existing media tree when files change
+        self.update_existing_media_tree()
+
+    def on_file_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle file click - for preview, not checkbox"""
+        # Column 1 is the file name column (checkbox is column 0)
+        file = item.data(1, Qt.ItemDataRole.UserRole)
         if not file:
             return
 
         self.current_file = file
-        self.save_btn.setEnabled(file.status == "pending")
+
+        # Handle exclusive checkbox selection per media type
+        if column == 0:  # Checkbox column clicked
+            # If this file was just checked, uncheck all other files of the same media type
+            if file and item.checkState(0) == Qt.CheckState.Checked:
+                self.uncheck_other_files_in_media_type(item, file.media_type)
+
+            self.update_save_button_state()
 
         # Stop and cleanup both media players completely
         self.media_player.stop()
@@ -930,7 +1055,11 @@ class MediaReviewWidget(QWidget):
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
         """Find existing file of the same media type, regardless of extension"""
-        base_path = Path(project_root) / "data" / "media"
+        # Use configured media directory
+        if self.config and self.config.vpx.media_directory:
+            base_path = Path(self.config.vpx.media_directory)
+        else:
+            base_path = Path("/opt/pinballux/data/media")
 
         # Define extension groups by media type
         video_exts = {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}
@@ -965,11 +1094,103 @@ class MediaReviewWidget(QWidget):
             # Search for any matching file with the table name
             for ext in search_exts:
                 local_filename = f"{file.table_name}{ext}"
-                local_path = get_local_media_path(file.media_type, local_filename)
+                local_path = get_local_media_path(file.media_type, local_filename, self.config)
                 if local_path.exists():
                     return local_path
 
         return None
+
+    def on_existing_media_clicked(self, item: QTreeWidgetItem, column: int):
+        """Handle click on existing media tree to show preview"""
+        # Get the stored file path
+        media_path = item.data(0, Qt.ItemDataRole.UserRole)
+
+        if not media_path:
+            # Clicked on category or "(none)" - ignore
+            return
+
+        local_path = Path(media_path)
+        if not local_path.exists():
+            self.existing_image_label.setText(f"File not found:\n{local_path}")
+            self.existing_image_label.setPixmap(QPixmap())
+            self.existing_image_label.show()
+            self.existing_video_widget.hide()
+            return
+
+        # Stop any playing media
+        self.existing_media_player.stop()
+        self.existing_media_player.setSource(QUrl())
+
+        # Check file type and show appropriate preview
+        ext = local_path.suffix.lower()
+
+        if ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
+            # Show image
+            pixmap = QPixmap(str(local_path))
+            if not pixmap.isNull():
+                scaled_pixmap = pixmap.scaled(
+                    self.existing_image_label.size(),
+                    Qt.AspectRatioMode.KeepAspectRatio,
+                    Qt.TransformationMode.SmoothTransformation
+                )
+                self.existing_image_label.setPixmap(scaled_pixmap)
+                self.existing_image_label.setText("")
+            else:
+                self.existing_image_label.setText(f"Failed to load image:\n{local_path.name}")
+                self.existing_image_label.setPixmap(QPixmap())
+
+            self.existing_image_label.show()
+            self.existing_video_widget.hide()
+
+        elif ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
+            # Show video
+            # Hide image label
+            self.existing_image_label.hide()
+
+            # Remove widgets from layout and destroy old video widget to clean up native overlay
+            self.existing_preview_layout.removeWidget(self.existing_image_label)
+            self.existing_preview_layout.removeWidget(self.existing_video_widget)
+            self.existing_video_widget.deleteLater()
+
+            # Create a fresh video widget
+            self.existing_video_widget = QVideoWidget()
+            self.existing_video_widget.setMinimumSize(400, 300)
+            self.existing_video_widget.mousePressEvent = lambda e: self.play_existing_media()
+
+            # Add the new video widget to layout
+            self.existing_preview_layout.addWidget(self.existing_video_widget)
+
+            # Set video output and source
+            self.existing_media_player.setVideoOutput(self.existing_video_widget)
+            self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
+
+            # Show the widget
+            self.existing_video_widget.show()
+
+            # Force geometry update
+            self.existing_video_widget.updateGeometry()
+            QApplication.processEvents()
+
+            # Start playback
+            self.existing_media_player.play()
+
+        elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
+            # Show audio indicator
+            self.existing_image_label.setText(f"🔊 Click to play:\n{local_path.name}")
+            self.existing_image_label.setPixmap(QPixmap())
+            self.existing_image_label.show()
+            self.existing_video_widget.hide()
+            self.existing_image_label.setFocus()
+
+            # Play audio
+            self.existing_media_player.setAudioOutput(self.existing_audio_output)
+            self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
+            self.existing_media_player.play()
+        else:
+            self.existing_image_label.setText(f"Cannot preview:\n{local_path.name}")
+            self.existing_image_label.setPixmap(QPixmap())
+            self.existing_image_label.show()
+            self.existing_video_widget.hide()
 
     def show_existing_preview(self, file: DownloadedFile):
         """Show preview of the existing PinballUX file if it exists"""
@@ -1081,14 +1302,181 @@ class MediaReviewWidget(QWidget):
                     self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
                     self.existing_media_player.play()
 
+    def uncheck_other_files_in_media_type(self, checked_item: QTreeWidgetItem, media_type: str):
+        """Uncheck all other files in the same media type category
+
+        This ensures only ONE file per media type can be selected at a time.
+        For example, if there are multiple table videos, only one should be checked.
+        """
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+
+            # Skip the item that was just checked
+            if item == checked_item:
+                iterator += 1
+                continue
+
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+
+            # If this file is the same media type and is checked, uncheck it
+            if file and file.media_type == media_type and file.status == "pending":
+                if item.checkState(0) == Qt.CheckState.Checked:
+                    item.setCheckState(0, Qt.CheckState.Unchecked)
+
+            iterator += 1
+
+    def update_save_button_state(self):
+        """Update save button enabled state based on selections"""
+        has_checked = False
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.status == "pending":
+                if item.checkState(0) == Qt.CheckState.Checked:
+                    has_checked = True
+                    break
+            iterator += 1
+
+        self.save_btn.setEnabled(has_checked)
+
+    def select_all(self):
+        """Select all pending files (last file in each media type will be selected due to exclusive logic)"""
+        # Track which media types we've seen
+        selected_per_type = {}
+
+        # First pass: collect all items by media type
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.status == "pending":
+                if file.media_type not in selected_per_type:
+                    selected_per_type[file.media_type] = []
+                selected_per_type[file.media_type].append(item)
+            iterator += 1
+
+        # Second pass: check the last item of each media type
+        # (this simulates user clicking through all items, with last click winning)
+        for media_type, items in selected_per_type.items():
+            # Check the last item in each category
+            if items:
+                items[-1].setCheckState(0, Qt.CheckState.Checked)
+
+        self.update_save_button_state()
+
+    def deselect_all(self):
+        """Deselect all files"""
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.status == "pending":
+                item.setCheckState(0, Qt.CheckState.Unchecked)
+            iterator += 1
+        self.update_save_button_state()
+
+    def save_selected(self):
+        """Save all selected (checked) files"""
+        # Collect checked files
+        files_to_save = []
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.status == "pending" and item.checkState(0) == Qt.CheckState.Checked:
+                files_to_save.append(file)
+            iterator += 1
+
+        if not files_to_save:
+            QMessageBox.information(self, "No Selection", "Please select files to save using the checkboxes.")
+            return
+
+        # Ask for confirmation
+        reply = QMessageBox.question(
+            self,
+            "Save Selected Files",
+            f"Save {len(files_to_save)} selected file(s)?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Save each file
+        saved_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        for file in files_to_save:
+            try:
+                # Generate local filename with table name
+                local_filename = f"{file.table_name}{file.temp_path.suffix}"
+                local_path = get_local_media_path(file.media_type, local_filename, self.config)
+
+                # Check if any existing file exists (any extension of the same type)
+                existing_file = self.find_existing_file(file)
+
+                overwrite = True
+                if existing_file and existing_file != local_path:
+                    # File exists with different extension - ask once per file
+                    reply = QMessageBox.question(
+                        self,
+                        "File Exists",
+                        f"File already exists:\n{existing_file}\n\nWill be replaced with:\n{local_path}\n\nOverwrite?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel
+                    )
+
+                    if reply == QMessageBox.StandardButton.Cancel:
+                        break  # Cancel entire operation
+                    elif reply == QMessageBox.StandardButton.No:
+                        overwrite = False
+
+                if overwrite:
+                    # Delete old file if different extension
+                    if existing_file and existing_file != local_path and existing_file.exists():
+                        existing_file.unlink()
+
+                    # Create directory and copy file
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(file.temp_path, local_path)
+
+                    # Mark as saved
+                    file.status = "saved"
+                    saved_count += 1
+                else:
+                    file.status = "skipped"
+                    skipped_count += 1
+
+            except Exception as e:
+                error_count += 1
+                QMessageBox.warning(self, "Error", f"Failed to save {file.ftp_filename}:\n{str(e)}")
+
+        # Update tree and show summary
+        self.update_file_tree()
+
+        # Update preview if current file was saved
+        if self.current_file and self.current_file in files_to_save:
+            self.show_existing_preview(self.current_file)
+
+        # Show summary
+        summary = f"Saved: {saved_count}"
+        if skipped_count > 0:
+            summary += f", Skipped: {skipped_count}"
+        if error_count > 0:
+            summary += f", Errors: {error_count}"
+
+        QMessageBox.information(self, "Save Complete", summary)
+
     def save_current(self):
-        """Save the current file to permanent location"""
+        """Save the current file to permanent location (legacy single-file save)"""
         if not self.current_file:
             return
 
         # Generate local filename with table name
         local_filename = f"{self.current_file.table_name}{self.current_file.temp_path.suffix}"
-        local_path = get_local_media_path(self.current_file.media_type, local_filename)
+        local_path = get_local_media_path(self.current_file.media_type, local_filename, self.config)
 
         # Check if any existing file exists (any extension of the same type)
         existing_file = self.find_existing_file(self.current_file)
@@ -1320,7 +1708,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.progress_text)
 
         # Media review widget
-        self.media_review = MediaReviewWidget()
+        self.media_review = MediaReviewWidget(self.config, parent_window=self)
         layout.addWidget(self.media_review)
 
     def load_saved_credentials(self):
@@ -1355,7 +1743,11 @@ class MainWindow(QMainWindow):
             List of missing media category keys
         """
         missing_categories = []
-        base_media_path = Path(project_root) / "data" / "media"
+        # Use configured media directory
+        if self.config and self.config.vpx.media_directory:
+            base_media_path = Path(self.config.vpx.media_directory)
+        else:
+            base_media_path = Path("/opt/pinballux/data/media")
 
         # Check backglass (images or videos)
         backglass_exists = False
@@ -1472,25 +1864,18 @@ class MainWindow(QMainWindow):
             self.import_pack_btn.setEnabled(True)
             self.log(f"Selected table: {self.selected_table.name}")
 
-            # Check which media categories are missing and auto-select them
+            # Update the existing media tree in the media review widget
+            self.media_review.update_existing_media_tree()
+
+            # Check which media categories are missing (for informational purposes only)
             missing_categories = self.check_missing_media_categories(self.selected_table)
 
             if missing_categories:
                 self.log(f"Missing media categories: {', '.join(missing_categories)}")
-
-                # Auto-select missing categories
-                for key, checkbox in self.media_category_checkboxes.items():
-                    if key in missing_categories:
-                        checkbox.setChecked(True)
-                    else:
-                        checkbox.setChecked(False)
-
-                self.log(f"Auto-selected {len(missing_categories)} missing categories for download")
             else:
-                # All categories exist - uncheck all
-                for checkbox in self.media_category_checkboxes.values():
-                    checkbox.setChecked(False)
                 self.log("✓ All media categories exist for this table")
+
+            # Note: User can manually select which categories to download using the checkboxes
 
     def start_download(self):
         """Start the download process"""
@@ -1753,8 +2138,13 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Error", "Please select a table first")
             return
 
-        # Default to the media packs directory
-        packs_dir = Path(project_root) / "data" / "media" / "packs"
+        # Default to the media packs directory (use configured media dir)
+        if self.config and self.config.vpx.media_directory:
+            base_media_path = Path(self.config.vpx.media_directory)
+        else:
+            base_media_path = Path("/opt/pinballux/data/media")
+
+        packs_dir = base_media_path / "packs"
         packs_dir.mkdir(parents=True, exist_ok=True)
 
         # Open file dialog to select zip file
@@ -1795,7 +2185,7 @@ class MainWindow(QMainWindow):
             }
 
             imported_files = []
-            base_media_path = Path(project_root) / "data" / "media"
+            # base_media_path already set above from config
 
             with zipfile.ZipFile(zip_path, 'r') as zip_file:
                 for file_info in zip_file.filelist:
