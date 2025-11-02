@@ -1,3 +1,12 @@
+pinballux (0.3.3-1) unstable; urgency=medium
+
+  * Fix media preview popup issue in existing media tree
+  * Properly clean up QVideoWidget before recreating to prevent native overlays
+  * Ensure video previews always display in preview pane, not separate windows
+  * Improves reliability of media preview functionality
+
+ -- Keith Phillips <keith@example.com>  Sat, 02 Nov 2025 10:00:00 -0500
+
 pinballux (0.3.2-1) unstable; urgency=medium
 
   * Extend wheel widget border to full screen width for immersive display
