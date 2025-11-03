@@ -38,11 +38,13 @@ try:
     from pinballux.src.database.models import DatabaseManager
     from pinballux.src.database.service import TableService
     from pinballux.src.database.table_manager import TableManager as TableScanner
+    from pinballux.src.media.manager import MediaManager
 except ModuleNotFoundError:
     from src.core.config import Config
     from src.database.models import DatabaseManager
     from src.database.service import TableService
     from src.database.table_manager import TableManager as TableScanner
+    from src.media.manager import MediaManager
 
 
 @dataclass
@@ -1460,6 +1462,19 @@ class MediaReviewWidget(QWidget):
         if self.current_file and self.current_file in files_to_save:
             self.show_existing_preview(self.current_file)
 
+        # Update database with newly saved media files
+        if saved_count > 0:
+            self.parent_window.log(f"Updating database for {saved_count} saved media file(s)...")
+            try:
+                # Rescan media for all tables to pick up the newly saved files
+                media_result = self.parent_window.table_service.rescan_all_media()
+                self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables with media changes")
+
+                # Reload the selected table to refresh the existing media tree
+                self.parent_window.reload_selected_table()
+            except Exception as e:
+                self.parent_window.log(f"⚠ Error updating database: {e}")
+
         # Show summary
         summary = f"Saved: {saved_count}"
         if skipped_count > 0:
@@ -1509,6 +1524,18 @@ class MediaReviewWidget(QWidget):
         # Update the existing preview to show the newly saved file
         self.show_existing_preview(self.current_file)
 
+        # Update database with newly saved media file
+        self.parent_window.log("Updating database for saved media file...")
+        try:
+            # Rescan media for all tables to pick up the newly saved file
+            media_result = self.parent_window.table_service.rescan_all_media()
+            self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables with media changes")
+
+            # Reload the selected table to refresh the existing media tree
+            self.parent_window.reload_selected_table()
+        except Exception as e:
+            self.parent_window.log(f"⚠ Error updating database: {e}")
+
     def delete_all(self):
         """Delete all cached files for the current table"""
         reply = QMessageBox.question(self, "Confirm Delete",
@@ -1551,7 +1578,12 @@ class MainWindow(QMainWindow):
         db_path = self.config_dir / "pinballux.db"
         self.db_manager = DatabaseManager(f"sqlite:///{db_path}")
         self.db_manager.initialize()
-        self.table_service = TableService(self.db_manager)
+
+        # Initialize MediaManager for scanning media files
+        self.media_manager = MediaManager(self.config)
+
+        # Initialize TableService with MediaManager
+        self.table_service = TableService(self.db_manager, self.media_manager)
 
         self.download_thread = None
         self.selected_table = None
@@ -1849,6 +1881,27 @@ class MainWindow(QMainWindow):
 
         return missing_categories
 
+    def reload_selected_table(self):
+        """Reload the selected table from database to get updated media paths"""
+        if not self.selected_table:
+            self.log("⚠ No table selected to reload")
+            return
+
+        table_id = self.selected_table.id
+        table_name = self.selected_table.name
+
+        # Reload table from database
+        reloaded_table = self.table_service.get_table_by_id(table_id)
+        if reloaded_table:
+            self.selected_table = reloaded_table
+            self.log(f"Reloaded table '{table_name}' (ID: {table_id}) from database")
+
+            # Update the existing media tree to show newly saved files
+            self.media_review.update_existing_media_tree()
+            self.log("✓ Refreshed media view")
+        else:
+            self.log(f"⚠ Failed to reload table '{table_name}' (ID: {table_id})")
+
     def show_table_selector(self):
         """Show the table selector dialog"""
         all_tables = self.table_service.get_all_tables()
@@ -2040,20 +2093,27 @@ class MainWindow(QMainWindow):
             )
 
     def scan_tables_on_startup(self):
-        """Scan tables on startup"""
+        """Scan tables on startup and validate media paths"""
+        # First, validate media paths to ensure database is in sync with filesystem
+        self.log("Validating media paths...")
+        try:
+            validation_result = self.table_service.validate_and_update_media_paths()
+            if validation_result['missing'] > 0:
+                self.log(f"⚠ Cleared {validation_result['missing']} missing media files from {validation_result['cleared']} tables")
+            else:
+                self.log("✓ All media paths validated")
+        except Exception as e:
+            self.log(f"⚠ Error validating media paths: {e}")
+
+        # Then run the normal table scan
         self.run_table_scan()
 
     def scan_tables_on_exit(self):
-        """Offer to scan tables before exit"""
-        reply = QMessageBox.question(
-            self,
-            "Scan Tables",
-            "Would you like to scan tables and update media links before exiting?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            self.run_table_scan()
+        """No longer needed - database is updated automatically when media files are saved"""
+        # Database is kept in sync automatically:
+        # - Media paths are validated on startup
+        # - Database is updated immediately when media files are saved
+        pass
 
     def run_table_scan(self):
         """Run the table scanner"""

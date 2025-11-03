@@ -222,8 +222,15 @@ class TableService:
     def get_table_by_id(self, table_id: int) -> Optional[Table]:
         """Get table by ID"""
         try:
-            with self.db.get_session() as session:
-                return session.query(Table).filter(Table.id == table_id).first()
+            session = self.db.get_session()
+            try:
+                table = session.query(Table).filter(Table.id == table_id).first()
+                if table:
+                    # Expunge the table from the session so it can be used outside the session
+                    session.expunge(table)
+                return table
+            finally:
+                session.close()
         except Exception as e:
             self.logger.error(f"Failed to get table by ID {table_id}: {e}")
             return None
@@ -701,5 +708,194 @@ class TableService:
 
         except Exception as e:
             self.logger.error(f"Failed to remove missing tables: {e}")
+
+        return result
+
+    def remove_tables_outside_directory(self, table_directory: str, mark_disabled: bool = False) -> Dict[str, int]:
+        """Remove or disable tables whose files are outside the specified table directory
+
+        This is useful when changing the table directory - tables from the old location
+        can be cleaned up.
+
+        Args:
+            table_directory: The current table directory path
+            mark_disabled: If True, disable tables instead of deleting them
+
+        Returns:
+            Dictionary with counts: checked, outside, disabled, removed
+        """
+        result = {
+            'checked': 0,
+            'outside': 0,
+            'disabled': 0,
+            'removed': 0
+        }
+
+        try:
+            tables = self.get_all_tables(enabled_only=False)
+            result['checked'] = len(tables)
+
+            table_dir_path = Path(table_directory).resolve()
+
+            with self.db.get_session() as session:
+                for table in tables:
+                    table_file_path = Path(table.file_path).resolve()
+
+                    # Check if table file is outside the configured directory
+                    try:
+                        # Check if table_file_path is relative to table_dir_path
+                        table_file_path.relative_to(table_dir_path)
+                        # If we get here, file is inside the directory
+                    except ValueError:
+                        # File is outside the directory
+                        result['outside'] += 1
+
+                        # Get the table from this session
+                        db_table = session.query(Table).filter(Table.id == table.id).first()
+                        if db_table:
+                            if mark_disabled:
+                                db_table.enabled = False
+                                db_table.updated_at = datetime.utcnow()
+                                result['disabled'] += 1
+                                self.logger.info(f"Disabled table outside directory: {table.name}")
+                            else:
+                                session.delete(db_table)
+                                result['removed'] += 1
+                                self.logger.info(f"Removed table outside directory: {table.name}")
+
+                session.commit()
+
+        except Exception as e:
+            self.logger.error(f"Failed to remove tables outside directory: {e}")
+
+        return result
+
+    def clear_media_outside_directory(self, media_directory: str) -> Dict[str, int]:
+        """Clear media paths for files that are outside the specified media directory
+
+        This is useful when changing the media directory - media paths from the old location
+        can be cleared so they'll be re-scanned from the new location.
+
+        Args:
+            media_directory: The current media directory path
+
+        Returns:
+            Dictionary with counts: checked, outside, cleared
+        """
+        result = {
+            'checked': 0,
+            'outside': 0,
+            'cleared': 0
+        }
+
+        try:
+            tables = self.get_all_tables(enabled_only=False)
+            result['checked'] = len(tables)
+
+            media_dir_path = Path(media_directory).resolve()
+
+            # List of all media path columns in the Table model
+            media_columns = [
+                'playfield_image', 'backglass_image', 'backglass_video',
+                'dmd_image', 'dmd_video', 'topper_image', 'topper_video',
+                'wheel_image', 'table_video', 'table_audio', 'launch_audio'
+            ]
+
+            with self.db.get_session() as session:
+                for table in tables:
+                    # Get the table from this session
+                    db_table = session.query(Table).filter(Table.id == table.id).first()
+                    if not db_table:
+                        continue
+
+                    media_cleared = False
+
+                    # Check each media column
+                    for column in media_columns:
+                        media_path = getattr(db_table, column)
+                        if media_path:
+                            media_file_path = Path(media_path).resolve()
+
+                            # Check if media file is outside the configured directory
+                            try:
+                                # Check if media_file_path is relative to media_dir_path
+                                media_file_path.relative_to(media_dir_path)
+                                # If we get here, file is inside the directory
+                            except ValueError:
+                                # File is outside the directory - clear it
+                                setattr(db_table, column, None)
+                                media_cleared = True
+                                self.logger.info(f"Cleared {column} for {table.name} (outside media directory)")
+
+                    if media_cleared:
+                        db_table.updated_at = datetime.utcnow()
+                        result['cleared'] += 1
+
+                # Count tables with media outside directory
+                result['outside'] = result['cleared']
+
+                session.commit()
+
+        except Exception as e:
+            self.logger.error(f"Failed to clear media outside directory: {e}")
+
+        return result
+
+    def validate_and_update_media_paths(self) -> Dict[str, int]:
+        """Validate all media paths and clear any that no longer exist on disk
+
+        This should be called on app startup to ensure database is in sync with filesystem.
+
+        Returns:
+            Dictionary with counts: checked, missing, cleared
+        """
+        result = {
+            'checked': 0,
+            'missing': 0,
+            'cleared': 0
+        }
+
+        try:
+            tables = self.get_all_tables(enabled_only=False)
+            result['checked'] = len(tables)
+
+            # List of all media path columns in the Table model
+            media_columns = [
+                'playfield_image', 'backglass_image', 'backglass_video',
+                'dmd_image', 'dmd_video', 'topper_image', 'topper_video',
+                'wheel_image', 'table_video', 'table_audio', 'launch_audio'
+            ]
+
+            with self.db.get_session() as session:
+                for table in tables:
+                    # Get the table from this session
+                    db_table = session.query(Table).filter(Table.id == table.id).first()
+                    if not db_table:
+                        continue
+
+                    media_cleared = False
+
+                    # Check each media column
+                    for column in media_columns:
+                        media_path = getattr(db_table, column)
+                        if media_path:
+                            # Check if file exists on disk
+                            if not Path(media_path).exists():
+                                # File is missing - clear it
+                                setattr(db_table, column, None)
+                                media_cleared = True
+                                result['missing'] += 1
+                                self.logger.info(f"Cleared {column} for {table.name} (file missing: {media_path})")
+
+                    if media_cleared:
+                        db_table.updated_at = datetime.utcnow()
+                        result['cleared'] += 1
+
+                session.commit()
+
+            self.logger.info(f"Media validation complete: {result['missing']} missing files cleared from {result['cleared']} tables")
+
+        except Exception as e:
+            self.logger.error(f"Failed to validate media paths: {e}")
 
         return result

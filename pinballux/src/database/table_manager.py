@@ -81,7 +81,21 @@ class TableManager:
             'summary': {}
         }
 
-        # 1. Clean up missing/deleted tables first
+        # 1. Clean up tables outside the current table directory
+        print("Checking for tables outside current table directory...")
+        outside_cleanup = self.table_service.remove_tables_outside_directory(
+            self.config.vpx.table_directory,
+            mark_disabled=False
+        )
+
+        if outside_cleanup['outside'] > 0:
+            print(f"Found {outside_cleanup['outside']} tables outside current directory")
+            print(f"✓ Removed {outside_cleanup['removed']} tables from database")
+        else:
+            print("✓ All tables are in current directory")
+        print()
+
+        # 2. Clean up missing/deleted tables
         print("Checking for deleted table files...")
         validation = self.table_service.validate_table_files()
 
@@ -111,8 +125,21 @@ class TableManager:
             recursive=True
         )
 
-        # 3. Scan for media files
-        print("\nScanning for media files...")
+        # 3. Clear media paths outside the current media directory
+        print("Checking for media files outside current media directory...")
+        media_cleanup = self.table_service.clear_media_outside_directory(
+            self.config.vpx.media_directory
+        )
+
+        if media_cleanup['cleared'] > 0:
+            print(f"Found {media_cleanup['cleared']} tables with media outside current directory")
+            print(f"✓ Cleared media paths (will be re-scanned)")
+        else:
+            print("✓ All media paths are in current directory")
+        print()
+
+        # 4. Scan for media files
+        print("Scanning for media files...")
         print(f"Directory: {self.config.vpx.media_directory}")
         print()
 

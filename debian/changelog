@@ -1,3 +1,15 @@
+pinballux (0.3.4-1) unstable; urgency=medium
+
+  * Add automatic media file validation on app startup
+  * Validate all media paths and remove references to deleted files
+  * Automatically update database when media files are saved
+  * Refresh media tree UI immediately after saving files
+  * Remove exit prompt for database updates (now automatic)
+  * Fix session management for table reloading after media saves
+  * Initialize MediaManager in table manager for proper media scanning
+
+ -- Keith Phillips <keith@example.com>  Sun, 03 Nov 2025 14:30:00 -0500
+
 pinballux (0.3.3-1) unstable; urgency=medium
 
   * Fix media preview popup issue in existing media tree
