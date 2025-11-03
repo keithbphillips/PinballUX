@@ -1,3 +1,16 @@
+pinballux (0.4.0-1) unstable; urgency=medium
+
+  * Add Full Table Scan feature for batch media management
+  * New media category selection dialog with presets
+  * Batch processing workflow with Next button navigation
+  * Auto-detection of missing media per table
+  * Smart filtering by selected media categories only
+  * Hardware-specific scanning (e.g., skip topper for cabinets without one)
+  * Enhanced progress tracking and completion summary
+  * Fix QCheckBox import error in media category dialog
+
+ -- Keith Phillips <keith@example.com>  Sun, 03 Nov 2025 05:35:00 -0500
+
 pinballux (0.3.4-1) unstable; urgency=medium
 
   * Add automatic media file validation on app startup
