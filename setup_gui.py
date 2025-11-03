@@ -644,11 +644,9 @@ class DisplayConfigTab(QWidget):
         self.config = config
         self.vpx_manager = VPXIniManager()
 
-        # Use the table directory from VPX config for ScreenRes.txt
-        screenres_path = None
-        if config.vpx.table_directory:
-            screenres_path = Path(config.vpx.table_directory) / "ScreenRes.txt"
-        self.screenres_manager = ScreenResManager(screenres_path)
+        # Don't initialize ScreenResManager here - we'll create it when saving
+        # with the current table_directory value to handle user changes
+        self.screenres_manager = None
 
         self.dmd_calculator = DMDPositionCalculator()
         self.screens = self._detect_screens()
@@ -781,6 +779,8 @@ class DisplayConfigTab(QWidget):
         rotation.addItems(["0°", "90°", "180°", "270°"])
         if current:
             rotation.setCurrentIndex([0, 90, 180, 270].index(current.rotation) if current.rotation in [0, 90, 180, 270] else 0)
+        else:
+            rotation.setCurrentIndex(0)  # Default to 0° rotation
         ux_layout.addRow("Rotation:", rotation)
 
         # DMD mode (only for DMD displays)
@@ -1020,6 +1020,15 @@ class DisplayConfigTab(QWidget):
 
     def save_config(self):
         """Save display configuration to both PinballUX and VPinballX.ini"""
+        # Get the current table directory from VPX config (it might have been changed)
+        table_dir = self.config.vpx.table_directory
+        if table_dir:
+            screenres_path = Path(table_dir) / "ScreenRes.txt"
+            self.screenres_manager = ScreenResManager(screenres_path)
+        else:
+            # Fall back to default if no table directory is set
+            self.screenres_manager = ScreenResManager()
+
         # Collect display configurations for ScreenRes.txt
         screenres_configs = {}
 
@@ -1332,6 +1341,36 @@ class VPXConfigTab(QWidget):
                 self.exe_path.setText(str(exe_path))
                 self.download_log.append(f"Executable path updated to: {exe_path}")
 
+                # Execute VPinballX_GL to create initial VPinballX.ini
+                self.download_log.append("Creating initial VPinballX.ini configuration...")
+                try:
+                    import subprocess
+                    # Run VPinballX_GL with no arguments to initialize config
+                    # It should exit quickly and create the default ini file
+                    result = subprocess.run(
+                        [str(exe_path)],
+                        timeout=5,
+                        capture_output=True,
+                        text=True
+                    )
+
+                    # Check if VPinballX.ini was created
+                    vpx_ini_path = Path.home() / ".vpinball" / "VPinballX.ini"
+                    if vpx_ini_path.exists():
+                        self.download_log.append(f"✓ VPinballX.ini created at: {vpx_ini_path}")
+                    else:
+                        self.download_log.append("⚠ VPinballX.ini not found - you may need to run VPinball manually once")
+
+                except subprocess.TimeoutExpired:
+                    # This is expected - VPinball might open a window that needs to be closed
+                    self.download_log.append("VPinball launched (you may need to close it)")
+                    vpx_ini_path = Path.home() / ".vpinball" / "VPinballX.ini"
+                    if vpx_ini_path.exists():
+                        self.download_log.append(f"✓ VPinballX.ini created at: {vpx_ini_path}")
+                except Exception as e:
+                    self.download_log.append(f"Note: Could not auto-launch VPinball: {e}")
+                    self.download_log.append("Please run VPinball once manually to create VPinballX.ini")
+
             QMessageBox.information(self, "Success", message)
         else:
             QMessageBox.critical(self, "Error", message)
@@ -1627,8 +1666,8 @@ class SetupWindow(QMainWindow):
         self.joystick_tab = JoystickConfigTab(self.config)
         self.audio_tab = AudioConfigTab(self.config)
 
-        tabs.addTab(self.display_tab, "Displays")
         tabs.addTab(self.vpx_tab, "Visual Pinball")
+        tabs.addTab(self.display_tab, "Displays")
         tabs.addTab(self.keyboard_tab, "Keyboard")
         tabs.addTab(self.joystick_tab, "Joystick")
         tabs.addTab(self.audio_tab, "Audio")
@@ -1653,9 +1692,10 @@ class SetupWindow(QMainWindow):
     def save_config(self):
         """Save all configuration"""
         try:
-            # Save from each tab
-            self.display_tab.save_config()
+            # Save VPX tab first so table/media directories are updated
+            # before other tabs that depend on them (like display tab)
             self.vpx_tab.save_config()
+            self.display_tab.save_config()
             self.keyboard_tab.save_config()
             self.joystick_tab.save_config()
             self.audio_tab.save_config()

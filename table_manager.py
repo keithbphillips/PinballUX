@@ -20,7 +20,7 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
-    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog
+    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog, QCheckBox
 )
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer
 from PyQt6.QtGui import QPixmap, QMovie
@@ -545,6 +545,113 @@ class FTPDownloadThread(QThread):
             return []
 
 
+class MediaCategoryDialog(QDialog):
+    """Dialog for selecting which media categories to scan for"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.selected_categories = []
+        self.init_ui()
+
+    def init_ui(self):
+        self.setWindowTitle("Select Media Categories to Scan")
+        self.setMinimumSize(500, 400)
+
+        layout = QVBoxLayout()
+
+        # Instructions
+        instructions = QLabel(
+            "Select which media categories you want to scan for during Full Table Scan.\n"
+            "Only tables missing the selected categories will be processed."
+        )
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("padding: 10px; background-color: #f0f0f0; border-radius: 5px;")
+        layout.addWidget(instructions)
+
+        # Category checkboxes
+        category_group = QGroupBox("Media Categories")
+        category_layout = QVBoxLayout()
+
+        self.category_checkboxes = {}
+        media_categories = [
+            ('backglass', 'Backglass (Images/Videos)', 'Display behind the playfield'),
+            ('table', 'Table/Playfield (Images/Videos)', 'Main playfield view'),
+            ('dmd', 'DMD (Images/Videos)', 'Dot Matrix Display or score display'),
+            ('topper', 'Topper (Images/Videos)', 'Cabinet top display (optional)'),
+            ('wheel', 'Wheel Images', 'Table selection wheel graphics'),
+            ('launch_audio', 'Launch Audio', 'Sound played when launching table'),
+            ('table_audio', 'Table Audio', 'Background music for table selection')
+        ]
+
+        for key, label, description in media_categories:
+            checkbox_layout = QHBoxLayout()
+
+            checkbox = QCheckBox(label)
+            checkbox.setChecked(True)  # Default all checked
+            checkbox.setStyleSheet("font-weight: bold;")
+            self.category_checkboxes[key] = checkbox
+            checkbox_layout.addWidget(checkbox)
+
+            desc_label = QLabel(f"({description})")
+            desc_label.setStyleSheet("color: #666; font-size: 11px;")
+            checkbox_layout.addWidget(desc_label)
+            checkbox_layout.addStretch()
+
+            category_layout.addLayout(checkbox_layout)
+
+        category_group.setLayout(category_layout)
+        layout.addWidget(category_group)
+
+        # Selection buttons
+        button_layout = QHBoxLayout()
+
+        select_all_btn = QPushButton("Select All")
+        select_all_btn.clicked.connect(self.select_all)
+        button_layout.addWidget(select_all_btn)
+
+        deselect_all_btn = QPushButton("Deselect All")
+        deselect_all_btn.clicked.connect(self.deselect_all)
+        button_layout.addWidget(deselect_all_btn)
+
+        # Preset buttons
+        common_btn = QPushButton("Common (No Topper)")
+        common_btn.clicked.connect(self.select_common)
+        common_btn.setToolTip("Select: Backglass, Table, DMD, Wheel, Audio (excludes Topper)")
+        button_layout.addWidget(common_btn)
+
+        button_layout.addStretch()
+        layout.addLayout(button_layout)
+
+        # Dialog buttons
+        dialog_buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        dialog_buttons.accepted.connect(self.accept)
+        dialog_buttons.rejected.connect(self.reject)
+        layout.addWidget(dialog_buttons)
+
+        self.setLayout(layout)
+
+    def select_all(self):
+        """Select all categories"""
+        for checkbox in self.category_checkboxes.values():
+            checkbox.setChecked(True)
+
+    def deselect_all(self):
+        """Deselect all categories"""
+        for checkbox in self.category_checkboxes.values():
+            checkbox.setChecked(False)
+
+    def select_common(self):
+        """Select common categories (no topper)"""
+        for key, checkbox in self.category_checkboxes.items():
+            checkbox.setChecked(key != 'topper')
+
+    def get_selected_categories(self):
+        """Get list of selected category keys"""
+        return [key for key, checkbox in self.category_checkboxes.items() if checkbox.isChecked()]
+
+
 class TableSelectorDialog(QDialog):
     """Dialog for selecting a table from the database"""
 
@@ -625,6 +732,11 @@ class MediaReviewWidget(QWidget):
         self.audio_output.setVolume(1.0)  # Set volume to 100%
         self.media_player.setAudioOutput(self.audio_output)
 
+        # Batch mode state
+        self.batch_mode_enabled = False
+        self.batch_progress_label = None
+        self.next_btn = None
+
         self.init_ui()
 
     def init_ui(self):
@@ -632,6 +744,13 @@ class MediaReviewWidget(QWidget):
 
         # Left panel - File tree
         left_panel = QVBoxLayout()
+
+        # Batch progress label (hidden by default)
+        self.batch_progress_label = QLabel("")
+        self.batch_progress_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2196F3; padding: 5px;")
+        self.batch_progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.batch_progress_label.hide()
+        left_panel.addWidget(self.batch_progress_label)
 
         # Buttons at top
         button_layout = QHBoxLayout()
@@ -654,6 +773,25 @@ class MediaReviewWidget(QWidget):
         self.delete_all_btn = QPushButton("Delete All")
         self.delete_all_btn.clicked.connect(self.delete_all)
         button_layout.addWidget(self.delete_all_btn)
+
+        # Next button (for batch mode, hidden by default)
+        self.next_btn = QPushButton("Next Table →")
+        self.next_btn.clicked.connect(self.on_next_clicked)
+        self.next_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 8px 20px;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+        self.next_btn.hide()
+        button_layout.addWidget(self.next_btn)
 
         left_panel.addLayout(button_layout)
 
@@ -1568,6 +1706,78 @@ class MediaReviewWidget(QWidget):
         event.accept()
 
 
+    def enable_batch_mode(self, total_tables: int):
+        """Enable batch mode with progress tracking"""
+        self.batch_mode_enabled = True
+        self.batch_progress_label.show()
+        self.next_btn.show()
+
+    def disable_batch_mode(self):
+        """Disable batch mode"""
+        self.batch_mode_enabled = False
+        self.batch_progress_label.hide()
+        self.next_btn.hide()
+
+    def update_batch_progress(self, current: int, total: int, table_name: str):
+        """Update batch progress display"""
+        if self.batch_mode_enabled:
+            self.batch_progress_label.setText(f"Batch Mode: Table {current}/{total} - {table_name}")
+            self.batch_progress_label.show()
+
+    def on_next_clicked(self):
+        """Handle Next button click - save selected and move to next table"""
+        # Auto-save selected files
+        files_to_save = []
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.status == "pending" and item.checkState(0) == Qt.CheckState.Checked:
+                files_to_save.append(file)
+            iterator += 1
+
+        # Save files if any are selected
+        if files_to_save:
+            saved_count = 0
+            for file in files_to_save:
+                try:
+                    local_filename = f"{file.table_name}{file.temp_path.suffix}"
+                    local_path = get_local_media_path(file.media_type, local_filename, self.config)
+
+                    # Check for existing file
+                    existing_file = self.find_existing_file(file)
+
+                    # Auto-overwrite in batch mode (no prompts)
+                    if existing_file and existing_file != local_path and existing_file.exists():
+                        existing_file.unlink()
+
+                    # Create directory and copy file
+                    local_path.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(file.temp_path, local_path)
+
+                    file.status = "saved"
+                    saved_count += 1
+                except Exception as e:
+                    self.parent_window.log(f"⚠ Error saving {file.ftp_filename}: {e}")
+
+            if saved_count > 0:
+                self.parent_window.log(f"✓ Saved {saved_count} file(s) for {files_to_save[0].table_name}")
+
+                # Update database
+                try:
+                    media_result = self.parent_window.table_service.rescan_all_media()
+                    self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables")
+                except Exception as e:
+                    self.parent_window.log(f"⚠ Error updating database: {e}")
+
+        # Clear current selection and move to next table
+        self.clear_files()
+
+        # Call parent window's next handler
+        if self.parent_window and hasattr(self.parent_window, 'on_batch_next_clicked'):
+            self.parent_window.on_batch_next_clicked()
+
+
 class MainWindow(QMainWindow):
     """Main application window"""
 
@@ -1587,6 +1797,11 @@ class MainWindow(QMainWindow):
 
         self.download_thread = None
         self.selected_table = None
+
+        # Batch processing state for Full Table Scan
+        self.batch_mode = False
+        self.batch_tables = []  # List of tables with missing media
+        self.batch_current_index = 0
 
         self.init_ui()
         self.load_saved_credentials()
@@ -1634,6 +1849,23 @@ class MainWindow(QMainWindow):
         self.select_table_btn = QPushButton("Select Table...")
         self.select_table_btn.clicked.connect(self.show_table_selector)
         table_layout.addWidget(self.select_table_btn)
+
+        self.full_scan_btn = QPushButton("Full Table Scan")
+        self.full_scan_btn.clicked.connect(self.start_full_table_scan)
+        self.full_scan_btn.setToolTip("Scan all tables for missing media and download in batch")
+        self.full_scan_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+                color: white;
+                font-weight: bold;
+                padding: 5px 15px;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #1976D2;
+            }
+        """)
+        table_layout.addWidget(self.full_scan_btn)
 
         self.selected_table_label = QLabel("No table selected")
         self.selected_table_label.setStyleSheet("font-weight: bold;")
@@ -2463,6 +2695,223 @@ class MainWindow(QMainWindow):
             self.status_label.setText("✗ CSV import failed")
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
             QMessageBox.critical(self, "Import Error", f"Error importing CSV:\n{e}")
+
+    def start_full_table_scan(self):
+        """Start full table scan to find all tables with missing media"""
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter FTP credentials first")
+            return
+
+        # Check if media cache needs refresh
+        if self.check_cache_age():
+            self.log("Please start Full Table Scan again after cache refresh completes")
+            return
+
+        # Show media category selection dialog
+        category_dialog = MediaCategoryDialog(self)
+        if category_dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Get selected categories
+        scan_categories = category_dialog.get_selected_categories()
+        if not scan_categories:
+            QMessageBox.warning(self, "Error", "Please select at least one media category to scan")
+            return
+
+        self.log("=" * 80)
+        self.log("FULL TABLE SCAN - Scanning all tables for missing media...")
+        self.log(f"Scanning for categories: {', '.join(scan_categories)}")
+        self.log("=" * 80)
+
+        # Get all tables
+        all_tables = self.table_service.get_all_tables()
+        if not all_tables:
+            QMessageBox.warning(self, "Error", "No tables found in database")
+            return
+
+        self.log(f"Checking {len(all_tables)} tables for missing media...")
+
+        # Find tables with missing media (only for selected categories)
+        tables_with_missing_media = []
+        for table in all_tables:
+            # Get all missing categories for this table
+            all_missing = self.check_missing_media_categories(table)
+
+            # Filter to only the categories user wants to scan for
+            missing_categories = [cat for cat in all_missing if cat in scan_categories]
+
+            if missing_categories:
+                tables_with_missing_media.append({
+                    'table': table,
+                    'missing_categories': missing_categories
+                })
+                self.log(f"  ▸ {table.name}: Missing {', '.join(missing_categories)}")
+
+        if not tables_with_missing_media:
+            QMessageBox.information(
+                self,
+                "Full Table Scan Complete",
+                "All tables have complete media! No missing media found."
+            )
+            self.log("✓ All tables have complete media")
+            return
+
+        # Show summary and confirm
+        summary = (
+            f"Full Table Scan Results:\n\n"
+            f"Total tables: {len(all_tables)}\n"
+            f"Tables with missing media: {len(tables_with_missing_media)}\n\n"
+            f"The system will now download and process media for each table.\n"
+            f"You will be able to review and select which files to keep for each table.\n\n"
+            f"Continue?"
+        )
+
+        reply = QMessageBox.question(
+            self,
+            "Start Batch Download",
+            summary,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Enable batch mode
+        self.batch_mode = True
+        self.batch_tables = tables_with_missing_media
+        self.batch_current_index = 0
+
+        self.log(f"Starting batch mode: {len(self.batch_tables)} tables to process")
+
+        # Enable batch mode in MediaReviewWidget
+        self.media_review.enable_batch_mode(len(self.batch_tables))
+
+        # Process first table
+        self.process_next_batch_table()
+
+    def process_next_batch_table(self):
+        """Process the next table in batch mode"""
+        if not self.batch_mode or self.batch_current_index >= len(self.batch_tables):
+            # Batch complete
+            self.finish_batch_mode()
+            return
+
+        # Get current table info
+        table_info = self.batch_tables[self.batch_current_index]
+        table = table_info['table']
+        missing_categories = table_info['missing_categories']
+
+        self.log("=" * 80)
+        self.log(f"BATCH [{self.batch_current_index + 1}/{len(self.batch_tables)}]: {table.name}")
+        self.log(f"Missing: {', '.join(missing_categories)}")
+        self.log("=" * 80)
+
+        # Set as selected table
+        self.selected_table = table
+        self.selected_table_label.setText(f"[Batch {self.batch_current_index + 1}/{len(self.batch_tables)}] {table.name}")
+
+        # Update batch progress in MediaReviewWidget
+        self.media_review.update_batch_progress(self.batch_current_index + 1, len(self.batch_tables), table.name)
+
+        # Update existing media tree
+        self.media_review.update_existing_media_tree()
+
+        # Auto-select only missing categories
+        for key, checkbox in self.media_category_checkboxes.items():
+            checkbox.setChecked(key in missing_categories)
+
+        # Clear previous downloads
+        self.media_review.clear_files()
+
+        # Start download for this table
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        self.download_thread = FTPDownloadThread(
+            username, password, table, self.config_dir,
+            self.db_manager, missing_categories
+        )
+        self.download_thread.progress.connect(self.update_status)
+        self.download_thread.progress_update.connect(self.update_progress_bar)
+        self.download_thread.file_downloaded.connect(self.on_file_downloaded)
+        self.download_thread.finished.connect(self.on_batch_download_finished)
+        self.download_thread.start()
+
+        # Update UI state
+        self.download_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.select_table_btn.setEnabled(False)
+        self.full_scan_btn.setEnabled(False)
+        self.status_label.setText(f"Downloading media for {table.name}...")
+        self.progress_bar.show()
+
+    def on_batch_download_finished(self, success: bool, message: str):
+        """Handle batch download completion"""
+        # Re-enable UI
+        self.download_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.progress_bar.hide()
+
+        if success:
+            self.status_label.setText(f"✓ Download Complete - Review and save media")
+            self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+            self.log(message)
+            # User will now review files and click "Next" button
+        else:
+            # Download failed, ask if user wants to skip or cancel
+            reply = QMessageBox.question(
+                self,
+                "Download Failed",
+                f"{message}\n\nSkip this table and continue with next?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+
+            if reply == QMessageBox.StandardButton.Yes:
+                # Skip to next table
+                self.batch_current_index += 1
+                self.process_next_batch_table()
+            else:
+                # Cancel batch mode
+                self.finish_batch_mode()
+
+    def on_batch_next_clicked(self):
+        """Handle Next button click in batch mode"""
+        self.log(f"Completed table [{self.batch_current_index + 1}/{len(self.batch_tables)}]")
+
+        # Move to next table
+        self.batch_current_index += 1
+        self.process_next_batch_table()
+
+    def finish_batch_mode(self):
+        """Finish batch mode and show summary"""
+        self.log("=" * 80)
+        self.log("FULL TABLE SCAN COMPLETE")
+        self.log("=" * 80)
+
+        QMessageBox.information(
+            self,
+            "Full Table Scan Complete",
+            f"Batch processing complete!\n\n"
+            f"Processed {len(self.batch_tables)} tables.\n\n"
+            f"All selected media has been saved."
+        )
+
+        # Disable batch mode
+        self.batch_mode = False
+        self.batch_tables = []
+        self.batch_current_index = 0
+        self.media_review.disable_batch_mode()
+
+        # Re-enable buttons
+        self.select_table_btn.setEnabled(True)
+        self.full_scan_btn.setEnabled(True)
+        self.selected_table_label.setText("No table selected")
+
+        self.status_label.setText("✓ Batch scan complete")
+        self.log("Ready for next operation")
 
     def closeEvent(self, event):
         """Handle window close event"""

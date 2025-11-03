@@ -137,12 +137,10 @@ class Config:
             self._create_default_config()
 
     def _update_default_paths(self):
-        """Update paths to use project-relative directories"""
-        project_root = Path(__file__).parents[2]  # Go up from src/core/config.py to project root
-
-        default_executable_path = str(project_root / "vpinball" / "VPinballX_GL")
-        default_table_dir = str(project_root / "data" / "tables")
-        default_media_dir = str(project_root / "data" / "media")
+        """Update paths to use /opt/pinballux/ directories"""
+        default_executable_path = "/opt/pinballux/vpinball/VPinballX_GL"
+        default_table_dir = "/opt/pinballux/data/tables"
+        default_media_dir = "/opt/pinballux/data/media"
 
         # Only update paths if they are empty (never overwrite user-set paths)
         if not self.vpx.executable_path:
@@ -186,13 +184,11 @@ class Config:
             topper=None  # Disabled by default
         )
 
-        # Get project root directory
-        project_root = Path(__file__).parents[2]  # Go up from src/core/config.py to project root
-
+        # Use /opt/pinballux/ as default installation directory
         self.vpx = VPXConfig(
-            executable_path=str(project_root / "vpinball" / "VPinballX_GL"),
-            table_directory=str(project_root / "data" / "tables"),
-            media_directory=str(project_root / "data" / "media")
+            executable_path="/opt/pinballux/vpinball/VPinballX_GL",
+            table_directory="/opt/pinballux/data/tables",
+            media_directory="/opt/pinballux/data/media"
         )
 
         self.input = InputConfig()
