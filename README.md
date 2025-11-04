@@ -7,10 +7,10 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 ## Screenshots
 
 ### Setup GUI
-![PinballUX Setup](docs/pinballux-setup.png)
+![PinballUX Setup](docs/pinball-setup.png)
 
 ### Table Manager
-![PinballUX Manager](docs/pinballux-manager.png)
+![PinballUX Manager](docs/pinball-manager.png)
 
 ## Features
 
@@ -36,7 +36,7 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 
 ```bash
 # Download the package and installer
-wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.2.6-1_all.deb
+wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.5.0-1_all.deb
 wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
 chmod +x install.sh
 
@@ -48,11 +48,11 @@ Or install manually:
 ```bash
 # Using gdebi (recommended)
 sudo apt install gdebi-core
-sudo gdebi pinballux_0.2.6-1_all.deb
+sudo gdebi pinballux_0.5.0-1_all.deb
 
 # Or using apt (copy to /tmp first)
-cp pinballux_0.2.6-1_all.deb /tmp/
-sudo apt-get install /tmp/pinballux_0.2.6-1_all.deb
+cp pinballux_0.5.0-1_all.deb /tmp/
+sudo apt-get install /tmp/pinballux_0.5.0-1_all.deb
 ```
 
 Then run `pinballux-setup` to configure and get started!
@@ -175,7 +175,7 @@ pinballux-setup
 
 ## Table Manager
 
-The Table Manager is a PyQt6 GUI application that handles table scanning, media management, and FTP downloads from ftp.gameex.com.
+The Table Manager is a PyQt6 GUI application that handles table scanning, media management, FTP downloads from ftp.gameex.com, and database import from pinballnirvana.com.
 
 ### Running Table Manager
 
@@ -200,9 +200,45 @@ The Table Manager can download media files (backglass, DMD, table videos/images,
    - 🎬 Video files
    - 🖼️ Image files
    - 🔊 Audio files
-5. **Preview & Compare**: Click any downloaded file to preview it side-by-side with your existing PinballUX media (if any)
-6. **Save Files**: Click "Save" to copy the downloaded file to your PinballUX media directory
-7. **Delete Cached Files**: Click "Delete All" to remove all cached downloads for the current table
+5. **Preview Files**: Click any downloaded file to preview it in the preview pane
+6. **Save Files**: Click "Save" next to a file to copy it to your PinballUX media directory (prompts before overwriting)
+
+### Manual Media Search
+
+For tables where automatic FTP matching doesn't work, use the **Search** feature:
+
+1. **Select Table**: Choose a table from your database
+2. **Click Search**: Opens a search dialog
+3. **Enter Search Term**: Type keywords to search for on the FTP server (e.g., table name variations)
+4. **Select Files**: Choose files from search results
+5. **Save Files**: Files are automatically renamed to match your selected table name
+
+### Full Table Scan
+
+The **Full Table Scan** feature enables batch media management across your entire collection:
+
+1. **Click "Full Table Scan"**: Opens media category selection dialog
+2. **Select Media Categories**: Choose which media types to scan for (backglass, DMD, table videos, wheel images, etc.)
+   - Use presets: "All Media", "Essential Only", or "Custom"
+3. **Automatic Detection**: Scans all tables and identifies which ones are missing the selected media types
+4. **Batch Processing**: Navigate through tables with missing media using "Next" button
+5. **Download & Save**: For each table, download and save missing media
+6. **Progress Tracking**: View completion summary showing how many tables were processed
+
+This feature is ideal for:
+- Initial setup when you need media for many tables
+- Hardware-specific configurations (e.g., skip topper media if you don't have a topper display)
+- Focusing on specific media categories (e.g., just wheel images for navigation)
+
+### Pinball Database Import
+
+Import table metadata from pinballnirvana.com spreadsheet:
+
+1. **Click "Pinball DB Import"**: Opens import dialog with clickable link to export URL
+2. **Export CSV**: Visit [pinballnirvana.com spreadsheet](https://docs.google.com/spreadsheets/d/1C2fTDXXuJzZcJTJlpjLLnRwpBMd5kNRgbdSYFMh_-Ow/edit?gid=0#gid=0) and export as CSV
+3. **Select CSV File**: Choose the downloaded CSV file
+4. **Automatic Import**: Table names, dates, manufacturers, and authors are imported into your database
+5. **Enhanced Metadata**: Enrich your table collection with detailed information
 
 ### Importing Media Packs
 
@@ -227,17 +263,22 @@ Supported media pack directories:
 - Launch Audio → `audio/launch/`
 - Table Audio → `audio/table/`
 
-### Features
+### Table Manager Features
 
-- **FTP Credential Storage**: Credentials are saved (base64 encoded) in `~/.config/pinballux/ftp_credentials.json`
-- **Temp Directory Caching**: Downloaded files are cached in `ftp_downloads_temp/` to avoid re-downloading
-- **Fuzzy Table Matching**: Automatically matches FTP files to your tables using 90% similarity threshold
-- **Cross-Extension Detection**: Compares files by media type (e.g., shows existing .mp4 when downloading .f4v)
+- **Automatic Table Scanning**: Detects new tables and updates database on startup
+- **FTP Media Download**: Download media from ftp.gameex.com with automatic table matching
+- **Manual Search**: Search FTP server when automatic matching doesn't work
+- **Full Table Scan**: Batch process all tables to identify and download missing media
+- **Pinball Database Import**: Import metadata from pinballnirvana.com CSV spreadsheet
+- **Media Pack Import**: Import HyperPin/PinballX media packs with automatic file mapping
+- **FTP Credential Storage**: Credentials saved securely in `~/.config/pinballux/ftp_credentials.json`
+- **Fuzzy Table Matching**: Automatically matches FTP files using 90% similarity threshold
+- **Cross-Extension Detection**: Compares files by media type regardless of extension
 - **Multi-Directory DMD Support**: Checks all DMD directories (dmd, fulldmd, real_dmd, real_dmd_color)
-- **Side-by-Side Preview**: View downloaded and existing media simultaneously before saving
+- **Media Preview**: Preview videos, images, and play audio files before saving
 - **Overwrite Protection**: Prompts before overwriting existing files
-- **Progress Indicators**: Real-time download status and progress tracking
-- **Media Pack Import**: Import HyperPin/PinballX media packs with automatic file mapping and renaming
+- **Progress Tracking**: Real-time download status and progress indicators
+- **Database-Driven Media**: Media paths stored in database for optimal performance
 
 ## Ubuntu Display Configuration
 
@@ -419,13 +460,16 @@ pinballux/
 
 ## Development Status
 
-This project is in early development. Core features are being implemented in phases:
+PinballUX is actively developed and functional. Current status:
 
 1. ✅ Project structure and configuration system
-2. 🚧 Multi-monitor architecture and display management
-3. 📋 Table database and VPX launching
-4. 📋 Media system and user interface
-5. 📋 Input handling and themes
+2. ✅ Multi-monitor architecture and display management
+3. ✅ Table database and VPX launching
+4. ✅ Media system and user interface
+5. ✅ Input handling (keyboard and joystick)
+6. ✅ Table Manager with FTP downloads and batch processing
+7. 📋 Themes and customization (planned)
+8. 📋 Advanced sorting and filtering (in progress)
 
 ## Contributing
 

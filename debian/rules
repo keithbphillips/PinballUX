@@ -34,6 +34,7 @@ override_dh_auto_install:
 	cp dmd_position_calculator.py debian/pinballux/opt/pinballux/
 	cp requirements.txt debian/pinballux/opt/pinballux/
 	cp README.md debian/pinballux/opt/pinballux/
+	cp LICENSE debian/pinballux/opt/pinballux/
 
 	# Install wrapper scripts
 	install -d debian/pinballux/usr/bin
