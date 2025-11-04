@@ -1,3 +1,24 @@
+pinballux (0.5.0-1) unstable; urgency=medium
+
+  * Major architectural improvements to media handling
+  * Implement direct media assignment to avoid full table scans
+  * Use database as single source of truth for media paths
+  * Remove live filesystem checks from wheel widget loading
+  * Add manual Search functionality to table manager
+  * Replace Delete All button with Search for flexible media searches
+  * Add bidirectional substring matching for better search results
+  * Unify preview pane - single preview for downloaded and existing files
+  * Rename table_manager.py to table_scanner.py for clarity
+  * Fix table audio not playing for tables with complex filenames
+  * Clear downloaded files tree when new table is selected
+  * Rename "Import CSV Database" to "Pinball DB Import"
+  * Add clickable hyperlink to Pinball Spreadsheet export URL
+  * Increase default window size to 1600x900 for better visibility
+  * Improve startup performance with O(n) database reads
+  * Preserve actual table names when saving manually searched files
+
+ -- Keith Phillips <keith@example.com>  Mon, 04 Nov 2025 12:00:00 -0500
+
 pinballux (0.4.0-1) unstable; urgency=medium
 
   * Add Full Table Scan feature for batch media management
