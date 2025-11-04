@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-Table Manager - Automated table and media scanner for PinballUX
+Table Scanner - Automated CLI table and media scanner for PinballUX
 
-This standalone utility scans for VPX table files and associated media,
+This standalone command-line utility scans for VPX table files and associated media,
 updates the database automatically, and reports what it finds.
+
+This is the CLI version. For the GUI media management tool, see table_manager.py in the root directory.
 """
 
 import sys
@@ -41,13 +43,13 @@ except ModuleNotFoundError:
 logger = get_logger(__name__)
 
 
-class TableManager:
-    """Automated table and media management"""
+class TableScanner:
+    """Automated table and media scanner (CLI)"""
 
     def __init__(self):
-        """Initialize the table manager"""
+        """Initialize the table scanner"""
         print("=" * 80)
-        print("PinballUX Table Manager")
+        print("PinballUX Table Scanner")
         print("=" * 80)
         print()
 
@@ -290,8 +292,8 @@ class TableManager:
 
 def main():
     """Main entry point"""
-    manager = TableManager()
-    return manager.run()
+    scanner = TableScanner()
+    return scanner.run()
 
 
 if __name__ == "__main__":

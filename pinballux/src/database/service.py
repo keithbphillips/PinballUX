@@ -899,3 +899,90 @@ class TableService:
             self.logger.error(f"Failed to validate media paths: {e}")
 
         return result
+
+    def assign_media_to_table(self, table_id: int, media_path: str, media_category: str) -> bool:
+        """Directly assign a media file to a specific table without fuzzy search
+
+        This is used when you already know which table a media file belongs to,
+        avoiding the need to do a full fuzzy search across all tables.
+
+        Args:
+            table_id: Database ID of the table
+            media_path: Full path to the media file
+            media_category: Category of media (table, backglass, dmd, topper, wheel, table_audio, launch_audio)
+
+        Returns:
+            True if assignment was successful, False otherwise
+        """
+        try:
+            # Validate media file exists
+            if not Path(media_path).exists():
+                self.logger.error(f"Media file does not exist: {media_path}")
+                return False
+
+            # Determine the database column based on media category and file extension
+            ext = Path(media_path).suffix.lower()
+            video_exts = {'.mp4', '.avi', '.mov', '.wmv', '.mkv', '.webm', '.f4v', '.flv'}
+            image_exts = {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.tiff', '.directb2s'}
+            audio_exts = {'.mp3', '.wav', '.ogg', '.m4a', '.flac'}
+
+            # Map category and extension to database column
+            column_name = None
+
+            if media_category == 'table':
+                if ext in video_exts:
+                    column_name = 'table_video'
+                elif ext in image_exts:
+                    column_name = 'playfield_image'
+            elif media_category == 'backglass':
+                if ext in video_exts:
+                    column_name = 'backglass_video'
+                elif ext in image_exts or ext in {'.directb2s'}:
+                    column_name = 'backglass_image'
+            elif media_category == 'dmd':
+                if ext in video_exts:
+                    column_name = 'dmd_video'
+                elif ext in image_exts:
+                    column_name = 'dmd_image'
+            elif media_category == 'topper':
+                if ext in video_exts:
+                    column_name = 'topper_video'
+                elif ext in image_exts:
+                    column_name = 'topper_image'
+            elif media_category == 'wheel':
+                if ext in image_exts:
+                    column_name = 'wheel_image'
+            elif media_category == 'table_audio':
+                if ext in audio_exts:
+                    column_name = 'table_audio'
+            elif media_category == 'launch_audio':
+                if ext in audio_exts:
+                    column_name = 'launch_audio'
+
+            if not column_name:
+                self.logger.error(f"Could not determine database column for category '{media_category}' and extension '{ext}'")
+                return False
+
+            # Update the table in database
+            with self.db.get_session() as session:
+                table = session.query(Table).filter(Table.id == table_id).first()
+                if not table:
+                    self.logger.error(f"Table not found with ID: {table_id}")
+                    return False
+
+                # Set the media path
+                old_value = getattr(table, column_name)
+                setattr(table, column_name, media_path)
+                table.updated_at = datetime.utcnow()
+
+                session.commit()
+
+                self.logger.info(f"Assigned {media_category} media to table '{table.name}': {column_name} = {media_path}")
+                if old_value and old_value != media_path:
+                    self.logger.debug(f"Previous value: {old_value}")
+
+                return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to assign media to table {table_id}: {e}")
+            return False

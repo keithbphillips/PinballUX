@@ -37,13 +37,13 @@ try:
     from pinballux.src.core.config import Config
     from pinballux.src.database.models import DatabaseManager
     from pinballux.src.database.service import TableService
-    from pinballux.src.database.table_manager import TableManager as TableScanner
+    from pinballux.src.database.table_scanner import TableScanner
     from pinballux.src.media.manager import MediaManager
 except ModuleNotFoundError:
     from src.core.config import Config
     from src.database.models import DatabaseManager
     from src.database.service import TableService
-    from src.database.table_manager import TableManager as TableScanner
+    from src.database.table_scanner import TableScanner
     from src.media.manager import MediaManager
 
 
@@ -137,6 +137,15 @@ def match_file_to_table(filename: str, table) -> float:
         else:
             # Substring match (filename appears in middle/end of table name)
             # Less reliable, use direct score
+            return direct_score
+
+    # Also check the reverse: if table name is in filename (for manual searches)
+    # e.g., table_title="Addams" matches filename_title="The Addams Family"
+    if table_title.lower() in filename_title.lower():
+        # Require minimum search term length to avoid too many false positives
+        if len(table_title) >= 4:
+            return 0.95  # High score for substring matches with decent length
+        else:
             return direct_score
 
     return direct_score
@@ -452,7 +461,9 @@ class FTPDownloadThread(QThread):
                             # File already in cache, skip download but still add to list
                             self.progress_update.emit(processed, total_to_download)
                             self.progress.emit(f"⚡ [{processed}/{total_to_download}] Cached: {filename}")
-                            self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
+                            # Use save_name if available (for manual searches), otherwise use table.name
+                            table_name_for_save = getattr(self.table, 'save_name', None) or self.table.name
+                            self.file_downloaded.emit(media_type, str(temp_path), filename, table_name_for_save)
                         else:
                             # Download file
                             try:
@@ -483,7 +494,9 @@ class FTPDownloadThread(QThread):
 
                                 download_count += 1
                                 self.progress.emit(f"✓ [{processed}/{total_to_download}] Downloaded: {filename} ({size_kb:.1f} KB @ {speed_kbps:.1f} KB/s)")
-                                self.file_downloaded.emit(media_type, str(temp_path), filename, self.table.name)
+                                # Use save_name if available (for manual searches), otherwise use table.name
+                                table_name_for_save = getattr(self.table, 'save_name', None) or self.table.name
+                                self.file_downloaded.emit(media_type, str(temp_path), filename, table_name_for_save)
                             except Exception as e:
                                 print(f"[DOWNLOAD] ERROR: {filename} - {str(e)}")
                                 self.progress.emit(f"⚠ [{processed}/{total_to_download}] Failed: {filename} - {str(e)}")
@@ -770,9 +783,10 @@ class MediaReviewWidget(QWidget):
         self.save_btn.setEnabled(False)
         button_layout.addWidget(self.save_btn)
 
-        self.delete_all_btn = QPushButton("Delete All")
-        self.delete_all_btn.clicked.connect(self.delete_all)
-        button_layout.addWidget(self.delete_all_btn)
+        self.search_btn = QPushButton("Search...")
+        self.search_btn.clicked.connect(self.manual_search)
+        self.search_btn.setToolTip("Search FTP for media using custom search term")
+        button_layout.addWidget(self.search_btn)
 
         # Next button (for batch mode, hidden by default)
         self.next_btn = QPushButton("Next Table →")
@@ -803,75 +817,38 @@ class MediaReviewWidget(QWidget):
         self.file_tree.setColumnWidth(0, 30)  # Narrow column for checkbox
         left_panel.addWidget(self.file_tree)
 
-        # Middle panel - Downloaded file preview
+        # Middle panel - Unified preview for both downloaded and existing files
         middle_panel = QVBoxLayout()
         middle_panel.setSpacing(0)
-        middle_title = QLabel("Downloaded File Preview")
+        middle_title = QLabel("Preview")
         middle_title.setFixedHeight(20)
         middle_panel.addWidget(middle_title)
 
-        self.downloaded_preview = QWidget()
-        self.downloaded_preview.setMinimumHeight(400)
-        self.downloaded_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.downloaded_preview_layout = QVBoxLayout()
-        self.downloaded_preview_layout.setContentsMargins(0, 0, 0, 0)
-        self.downloaded_preview_layout.setSpacing(0)
-        self.downloaded_preview.setLayout(self.downloaded_preview_layout)
+        self.preview_widget = QWidget()
+        self.preview_widget.setMinimumHeight(400)
+        self.preview_widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self.preview_layout = QVBoxLayout()
+        self.preview_layout.setContentsMargins(0, 0, 0, 0)
+        self.preview_layout.setSpacing(0)
+        self.preview_widget.setLayout(self.preview_layout)
 
-        self.downloaded_image_label = QLabel("Select a file to preview")
-        self.downloaded_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.downloaded_image_label.setMinimumSize(400, 400)
-        self.downloaded_image_label.setScaledContents(False)
-        self.downloaded_image_label.mousePressEvent = lambda e: self.play_downloaded_media()
+        self.preview_image_label = QLabel("Select a file to preview")
+        self.preview_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+        self.preview_image_label.setMinimumSize(400, 400)
+        self.preview_image_label.setScaledContents(False)
+        self.preview_image_label.mousePressEvent = lambda e: self.play_preview_media()
 
-        self.downloaded_video_widget = QVideoWidget()
-        self.downloaded_video_widget.setMinimumSize(400, 300)
-        self.downloaded_video_widget.hide()
-        self.downloaded_video_widget.mousePressEvent = lambda e: self.play_downloaded_media()
+        self.preview_video_widget = QVideoWidget()
+        self.preview_video_widget.setMinimumSize(400, 300)
+        self.preview_video_widget.hide()
+        self.preview_video_widget.mousePressEvent = lambda e: self.play_preview_media()
 
-        self.media_player.setVideoOutput(self.downloaded_video_widget)
+        self.media_player.setVideoOutput(self.preview_video_widget)
 
-        self.downloaded_preview_layout.addWidget(self.downloaded_image_label)
-        self.downloaded_preview_layout.addWidget(self.downloaded_video_widget)
+        self.preview_layout.addWidget(self.preview_image_label)
+        self.preview_layout.addWidget(self.preview_video_widget)
 
-        middle_panel.addWidget(self.downloaded_preview)
-
-        # Right panel - Existing file preview
-        right_panel = QVBoxLayout()
-        right_panel.setSpacing(0)
-        right_title = QLabel("Existing PinballUX File (if any)")
-        right_title.setFixedHeight(20)
-        right_panel.addWidget(right_title)
-
-        self.existing_preview = QWidget()
-        self.existing_preview.setMinimumHeight(400)
-        self.existing_preview.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self.existing_preview_layout = QVBoxLayout()
-        self.existing_preview_layout.setContentsMargins(0, 0, 0, 0)
-        self.existing_preview_layout.setSpacing(0)
-        self.existing_preview.setLayout(self.existing_preview_layout)
-
-        self.existing_image_label = QLabel("No existing file")
-        self.existing_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-        self.existing_image_label.setMinimumSize(400, 400)
-        self.existing_image_label.setScaledContents(False)
-        self.existing_image_label.mousePressEvent = lambda e: self.play_existing_media()
-
-        self.existing_video_widget = QVideoWidget()
-        self.existing_video_widget.setMinimumSize(400, 300)
-        self.existing_video_widget.hide()
-        self.existing_video_widget.mousePressEvent = lambda e: self.play_existing_media()
-
-        self.existing_media_player = QMediaPlayer()
-        self.existing_audio_output = QAudioOutput()
-        self.existing_audio_output.setVolume(1.0)  # Set volume to 100%
-        self.existing_media_player.setAudioOutput(self.existing_audio_output)
-        self.existing_media_player.setVideoOutput(self.existing_video_widget)
-
-        self.existing_preview_layout.addWidget(self.existing_image_label)
-        self.existing_preview_layout.addWidget(self.existing_video_widget)
-
-        right_panel.addWidget(self.existing_preview)
+        middle_panel.addWidget(self.preview_widget)
 
         # Fourth panel - Existing media tree for selected table
         fourth_panel = QVBoxLayout()
@@ -893,21 +870,17 @@ class MediaReviewWidget(QWidget):
         middle_widget = QWidget()
         middle_widget.setLayout(middle_panel)
         right_widget = QWidget()
-        right_widget.setLayout(right_panel)
-        fourth_widget = QWidget()
-        fourth_widget.setLayout(fourth_panel)
+        right_widget.setLayout(fourth_panel)
 
         splitter.addWidget(left_widget)
         splitter.addWidget(middle_widget)
         splitter.addWidget(right_widget)
-        splitter.addWidget(fourth_widget)
 
         # Make panels resizable with initial sizes
-        splitter.setStretchFactor(0, 1)  # Downloaded files
-        splitter.setStretchFactor(1, 2)  # Downloaded preview
-        splitter.setStretchFactor(2, 2)  # Existing preview
-        splitter.setStretchFactor(3, 1)  # Existing media tree
-        splitter.setSizes([300, 400, 400, 300])  # Initial sizes
+        splitter.setStretchFactor(0, 2)  # Downloaded files tree
+        splitter.setStretchFactor(1, 3)  # Unified preview
+        splitter.setStretchFactor(2, 1)  # Existing media tree
+        splitter.setSizes([450, 500, 300])  # Initial sizes - wider left panel for buttons
         splitter.setChildrenCollapsible(False)  # Prevent panels from collapsing
 
         layout.addWidget(splitter)
@@ -916,19 +889,12 @@ class MediaReviewWidget(QWidget):
     def cleanup_media_players(self):
         """Properly cleanup media players to prevent resource leaks"""
         try:
-            # Cleanup downloaded media player
+            # Cleanup unified media player
             if self.media_player:
                 self.media_player.stop()
                 self.media_player.setSource(QUrl())
                 self.media_player.setVideoOutput(None)
                 self.media_player.setAudioOutput(None)
-
-            # Cleanup existing media player
-            if self.existing_media_player:
-                self.existing_media_player.stop()
-                self.existing_media_player.setSource(QUrl())
-                self.existing_media_player.setVideoOutput(None)
-                self.existing_media_player.setAudioOutput(None)
         except Exception as e:
             pass  # Ignore cleanup errors
 
@@ -949,14 +915,10 @@ class MediaReviewWidget(QWidget):
 
         # Reset UI
         self.file_tree.clear()
-        self.downloaded_image_label.setText("Select a file to preview")
-        self.downloaded_image_label.setPixmap(QPixmap())
-        self.downloaded_image_label.show()
-        self.downloaded_video_widget.hide()
-        self.existing_image_label.setText("No existing file")
-        self.existing_image_label.setPixmap(QPixmap())
-        self.existing_image_label.show()
-        self.existing_video_widget.hide()
+        self.preview_image_label.setText("Select a file to preview")
+        self.preview_image_label.setPixmap(QPixmap())
+        self.preview_image_label.show()
+        self.preview_video_widget.hide()
         self.save_btn.setEnabled(False)
 
     def update_existing_media_tree(self):
@@ -1085,33 +1047,23 @@ class MediaReviewWidget(QWidget):
 
             self.update_save_button_state()
 
-        # Stop and cleanup both media players completely
+        # Stop and cleanup unified media player completely
         self.media_player.stop()
         self.media_player.setSource(QUrl())
         self.media_player.setVideoOutput(None)
         self.media_player.setAudioOutput(None)
 
-        self.existing_media_player.stop()
-        self.existing_media_player.setSource(QUrl())
-        self.existing_media_player.setVideoOutput(None)
-        self.existing_media_player.setAudioOutput(None)
-
         # Reset widget visibility to known state
-        self.downloaded_video_widget.hide()
-        self.downloaded_image_label.hide()
-        self.existing_video_widget.hide()
-        self.existing_image_label.hide()
+        self.preview_video_widget.hide()
+        self.preview_image_label.hide()
 
         # Use QTimer to delay preview showing slightly to allow Qt to process the cleanup
         QTimer.singleShot(50, lambda: self._show_previews(file))
 
     def _show_previews(self, file: DownloadedFile):
-        """Show previews after cleanup delay"""
-        # Show downloaded file preview
+        """Show preview of downloaded file after cleanup delay"""
+        # Show downloaded file in unified preview
         self.show_downloaded_preview(file)
-
-        # Show existing file preview
-        self.show_existing_preview(file)
 
         # Keep log scrolled to bottom to show newest entries
         main_window = self.window()
@@ -1121,77 +1073,89 @@ class MediaReviewWidget(QWidget):
             main_window.progress_text.setTextCursor(cursor)
             main_window.progress_text.ensureCursorVisible()
 
-    def show_downloaded_preview(self, file: DownloadedFile):
-        """Show preview of the downloaded file"""
-        ext = file.temp_path.suffix.lower()
+    def show_preview(self, file_path: Path, file_display_name: str = None):
+        """Show preview of any file (downloaded or existing) in the unified preview pane
+
+        Args:
+            file_path: Path to the file to preview
+            file_display_name: Optional display name for the file (used for audio files)
+        """
+        ext = file_path.suffix.lower()
+
+        if not file_display_name:
+            file_display_name = file_path.name
 
         # Remove both widgets from layout first
-        self.downloaded_preview_layout.removeWidget(self.downloaded_image_label)
-        self.downloaded_preview_layout.removeWidget(self.downloaded_video_widget)
+        self.preview_layout.removeWidget(self.preview_image_label)
+        self.preview_layout.removeWidget(self.preview_video_widget)
 
         # ALWAYS destroy the old video widget first to clean up native overlay
-        self.downloaded_video_widget.deleteLater()
+        self.preview_video_widget.deleteLater()
 
         if ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
             # Video
-            self.downloaded_image_label.hide()
+            self.preview_image_label.hide()
 
             # Create a fresh video widget
-            self.downloaded_video_widget = QVideoWidget()
-            self.downloaded_video_widget.setMinimumSize(400, 300)
-            self.downloaded_video_widget.mousePressEvent = lambda e: self.play_downloaded_media()
+            self.preview_video_widget = QVideoWidget()
+            self.preview_video_widget.setMinimumSize(400, 300)
+            self.preview_video_widget.mousePressEvent = lambda e: self.play_preview_media()
 
             # Add the new video widget to layout
-            self.downloaded_preview_layout.addWidget(self.downloaded_video_widget)
+            self.preview_layout.addWidget(self.preview_video_widget)
 
             # Set video output and source
-            self.media_player.setVideoOutput(self.downloaded_video_widget)
+            self.media_player.setVideoOutput(self.preview_video_widget)
             self.media_player.setAudioOutput(self.audio_output)
-            self.media_player.setSource(QUrl.fromLocalFile(str(file.temp_path)))
+            self.media_player.setSource(QUrl.fromLocalFile(str(file_path)))
 
             # Show the widget
-            self.downloaded_video_widget.show()
+            self.preview_video_widget.show()
 
             # Force geometry update
-            self.downloaded_video_widget.updateGeometry()
+            self.preview_video_widget.updateGeometry()
             QApplication.processEvents()
 
             # Start playback
             self.media_player.play()
 
-        elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
+        elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif', '.directb2s'}:
             # Image
             # Create a new empty video widget (since we deleted the old one)
-            self.downloaded_video_widget = QVideoWidget()
-            self.downloaded_video_widget.setMinimumSize(400, 300)
-            self.downloaded_video_widget.hide()
+            self.preview_video_widget = QVideoWidget()
+            self.preview_video_widget.setMinimumSize(400, 300)
+            self.preview_video_widget.hide()
 
-            self.downloaded_image_label.show()
+            self.preview_image_label.show()
             # Re-add image label to layout
-            self.downloaded_preview_layout.addWidget(self.downloaded_image_label)
-            self.downloaded_image_label.raise_()
-            self.downloaded_image_label.setFocus()
-            pixmap = QPixmap(str(file.temp_path))
+            self.preview_layout.addWidget(self.preview_image_label)
+            self.preview_image_label.raise_()
+            self.preview_image_label.setFocus()
+            pixmap = QPixmap(str(file_path))
             scaled_pixmap = pixmap.scaled(400, 400,
                                           Qt.AspectRatioMode.KeepAspectRatio,
                                           Qt.TransformationMode.SmoothTransformation)
-            self.downloaded_image_label.setPixmap(scaled_pixmap)
-            self.downloaded_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
+            self.preview_image_label.setPixmap(scaled_pixmap)
+            self.preview_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
 
         elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
             # Audio
             # Create a new empty video widget (since we deleted the old one)
-            self.downloaded_video_widget = QVideoWidget()
-            self.downloaded_video_widget.setMinimumSize(400, 300)
-            self.downloaded_video_widget.hide()
+            self.preview_video_widget = QVideoWidget()
+            self.preview_video_widget.setMinimumSize(400, 300)
+            self.preview_video_widget.hide()
 
-            self.downloaded_image_label.show()
+            self.preview_image_label.show()
             # Re-add image label to layout
-            self.downloaded_preview_layout.addWidget(self.downloaded_image_label)
-            self.downloaded_image_label.raise_()
-            self.downloaded_image_label.setFocus()
-            self.downloaded_image_label.setText(f"🔊 Click to play: {file.ftp_filename}")
+            self.preview_layout.addWidget(self.preview_image_label)
+            self.preview_image_label.raise_()
+            self.preview_image_label.setFocus()
+            self.preview_image_label.setText(f"🔊 Click to play: {file_display_name}")
             self.media_player.setAudioOutput(self.audio_output)
+
+    def show_downloaded_preview(self, file: DownloadedFile):
+        """Show preview of a downloaded file"""
+        self.show_preview(file.temp_path, file.ftp_filename)
 
     def find_existing_file(self, file: DownloadedFile) -> Optional[Path]:
         """Find existing file of the same media type, regardless of extension"""
@@ -1241,7 +1205,7 @@ class MediaReviewWidget(QWidget):
         return None
 
     def on_existing_media_clicked(self, item: QTreeWidgetItem, column: int):
-        """Handle click on existing media tree to show preview"""
+        """Handle click on existing media tree to show preview in unified preview pane"""
         # Get the stored file path
         media_path = item.data(0, Qt.ItemDataRole.UserRole)
 
@@ -1251,196 +1215,27 @@ class MediaReviewWidget(QWidget):
 
         local_path = Path(media_path)
         if not local_path.exists():
-            self.existing_image_label.setText(f"File not found:\n{local_path}")
-            self.existing_image_label.setPixmap(QPixmap())
-            self.existing_image_label.show()
-            self.existing_video_widget.hide()
+            self.preview_image_label.setText(f"File not found:\n{local_path}")
+            self.preview_image_label.setPixmap(QPixmap())
+            self.preview_image_label.show()
+            self.preview_video_widget.hide()
             return
 
         # Stop any playing media
-        self.existing_media_player.stop()
-        self.existing_media_player.setSource(QUrl())
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
 
-        # Check file type and show appropriate preview
-        ext = local_path.suffix.lower()
+        # Show preview in unified preview pane
+        self.show_preview(local_path)
 
-        if ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
-            # Show image
-            pixmap = QPixmap(str(local_path))
-            if not pixmap.isNull():
-                scaled_pixmap = pixmap.scaled(
-                    self.existing_image_label.size(),
-                    Qt.AspectRatioMode.KeepAspectRatio,
-                    Qt.TransformationMode.SmoothTransformation
-                )
-                self.existing_image_label.setPixmap(scaled_pixmap)
-                self.existing_image_label.setText("")
-            else:
-                self.existing_image_label.setText(f"Failed to load image:\n{local_path.name}")
-                self.existing_image_label.setPixmap(QPixmap())
-
-            self.existing_image_label.show()
-            self.existing_video_widget.hide()
-
-        elif ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
-            # Show video
-            # Hide image label
-            self.existing_image_label.hide()
-
-            # Remove widgets from layout and destroy old video widget to clean up native overlay
-            self.existing_preview_layout.removeWidget(self.existing_image_label)
-            self.existing_preview_layout.removeWidget(self.existing_video_widget)
-            self.existing_video_widget.deleteLater()
-
-            # Create a fresh video widget
-            self.existing_video_widget = QVideoWidget()
-            self.existing_video_widget.setMinimumSize(400, 300)
-            self.existing_video_widget.mousePressEvent = lambda e: self.play_existing_media()
-
-            # Add the new video widget to layout
-            self.existing_preview_layout.addWidget(self.existing_video_widget)
-
-            # Set video output and source
-            self.existing_media_player.setVideoOutput(self.existing_video_widget)
-            self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
-
-            # Show the widget
-            self.existing_video_widget.show()
-
-            # Force geometry update
-            self.existing_video_widget.updateGeometry()
-            QApplication.processEvents()
-
-            # Start playback
-            self.existing_media_player.play()
-
-        elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
-            # Show audio indicator
-            self.existing_image_label.setText(f"🔊 Click to play:\n{local_path.name}")
-            self.existing_image_label.setPixmap(QPixmap())
-            self.existing_image_label.show()
-            self.existing_video_widget.hide()
-            self.existing_image_label.setFocus()
-
-            # Play audio
-            self.existing_media_player.setAudioOutput(self.existing_audio_output)
-            self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
-            self.existing_media_player.play()
+    def play_preview_media(self):
+        """Toggle play/pause for audio/video in the unified preview"""
+        # If currently playing, pause it
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
         else:
-            self.existing_image_label.setText(f"Cannot preview:\n{local_path.name}")
-            self.existing_image_label.setPixmap(QPixmap())
-            self.existing_image_label.show()
-            self.existing_video_widget.hide()
-
-    def show_existing_preview(self, file: DownloadedFile):
-        """Show preview of the existing PinballUX file if it exists"""
-        local_path = self.find_existing_file(file)
-
-        # Remove both widgets from layout first
-        self.existing_preview_layout.removeWidget(self.existing_image_label)
-        self.existing_preview_layout.removeWidget(self.existing_video_widget)
-
-        # ALWAYS destroy the old video widget first to clean up native overlay
-        self.existing_video_widget.deleteLater()
-
-        if local_path:
-            ext = local_path.suffix.lower()
-
-            if ext in {'.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm'}:
-                # Video
-                self.existing_image_label.hide()
-
-                # Create a fresh video widget
-                self.existing_video_widget = QVideoWidget()
-                self.existing_video_widget.setMinimumSize(400, 300)
-                self.existing_video_widget.mousePressEvent = lambda e: self.play_existing_media()
-
-                # Add the new video widget to layout
-                self.existing_preview_layout.addWidget(self.existing_video_widget)
-
-                # Set video output and source
-                self.existing_media_player.setVideoOutput(self.existing_video_widget)
-                self.existing_media_player.setAudioOutput(self.existing_audio_output)
-                self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
-
-                # Show the widget
-                self.existing_video_widget.show()
-
-                # Force geometry update
-                self.existing_video_widget.updateGeometry()
-                QApplication.processEvents()
-
-                # Start playback
-                self.existing_media_player.play()
-
-            elif ext in {'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif'}:
-                # Image
-                # Create a new empty video widget (since we deleted the old one)
-                self.existing_video_widget = QVideoWidget()
-                self.existing_video_widget.setMinimumSize(400, 300)
-                self.existing_video_widget.hide()
-
-                self.existing_image_label.show()
-                # Re-add image label to layout
-                self.existing_preview_layout.addWidget(self.existing_image_label)
-                self.existing_image_label.raise_()
-                self.existing_image_label.setFocus()
-                pixmap = QPixmap(str(local_path))
-                scaled_pixmap = pixmap.scaled(400, 400,
-                                              Qt.AspectRatioMode.KeepAspectRatio,
-                                              Qt.TransformationMode.SmoothTransformation)
-                self.existing_image_label.setPixmap(scaled_pixmap)
-                self.existing_image_label.setAlignment(Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignHCenter)
-            elif ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
-                # Audio
-                # Create a new empty video widget (since we deleted the old one)
-                self.existing_video_widget = QVideoWidget()
-                self.existing_video_widget.setMinimumSize(400, 300)
-                self.existing_video_widget.hide()
-
-                self.existing_image_label.show()
-                # Re-add image label to layout
-                self.existing_preview_layout.addWidget(self.existing_image_label)
-                self.existing_image_label.raise_()
-                self.existing_image_label.setFocus()
-                self.existing_image_label.setText(f"🔊 Click to play existing: {local_path.name}")
-                self.existing_media_player.setAudioOutput(self.existing_audio_output)
-        else:
-            # No existing file
-            # Create a new empty video widget (since we deleted the old one)
-            self.existing_video_widget = QVideoWidget()
-            self.existing_video_widget.setMinimumSize(400, 300)
-            self.existing_video_widget.hide()
-
-            self.existing_image_label.show()
-            # Re-add image label to layout
-            self.existing_preview_layout.addWidget(self.existing_image_label)
-            self.existing_image_label.raise_()
-            self.existing_image_label.setText("No existing file")
-            self.existing_image_label.setPixmap(QPixmap())
-
-    def play_downloaded_media(self):
-        """Play downloaded audio when clicked"""
-        if self.current_file:
-            ext = self.current_file.temp_path.suffix.lower()
-            if ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
-                # Ensure audio output is connected
-                self.media_player.setAudioOutput(self.audio_output)
-                self.media_player.setSource(QUrl.fromLocalFile(str(self.current_file.temp_path)))
-                self.media_player.play()
-
-    def play_existing_media(self):
-        """Play existing audio when clicked"""
-        if self.current_file:
-            local_path = self.find_existing_file(self.current_file)
-
-            if local_path:
-                ext = local_path.suffix.lower()
-                if ext in {'.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a'}:
-                    # Ensure audio output is connected
-                    self.existing_media_player.setAudioOutput(self.existing_audio_output)
-                    self.existing_media_player.setSource(QUrl.fromLocalFile(str(local_path)))
-                    self.existing_media_player.play()
+            # If paused or stopped, play/resume
+            self.media_player.play()
 
     def uncheck_other_files_in_media_type(self, checked_item: QTreeWidgetItem, media_type: str):
         """Uncheck all other files in the same media type category
@@ -1596,17 +1391,34 @@ class MediaReviewWidget(QWidget):
         # Update tree and show summary
         self.update_file_tree()
 
-        # Update preview if current file was saved
-        if self.current_file and self.current_file in files_to_save:
-            self.show_existing_preview(self.current_file)
+        # Preview will still show the downloaded file after saving
 
         # Update database with newly saved media files
         if saved_count > 0:
             self.parent_window.log(f"Updating database for {saved_count} saved media file(s)...")
             try:
-                # Rescan media for all tables to pick up the newly saved files
-                media_result = self.parent_window.table_service.rescan_all_media()
-                self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables with media changes")
+                # Get the current table ID
+                current_table = self.parent_window.selected_table
+                if current_table:
+                    # Directly assign each saved media file to the table
+                    assigned_count = 0
+                    for file in files_to_save:
+                        if file.status == "saved":
+                            # Generate the local path that was saved
+                            local_filename = f"{file.table_name}{file.temp_path.suffix}"
+                            local_path = get_local_media_path(file.media_type, local_filename, self.config)
+
+                            # Directly assign to table in database
+                            if self.parent_window.table_service.assign_media_to_table(
+                                current_table.id,
+                                str(local_path),
+                                file.media_type
+                            ):
+                                assigned_count += 1
+
+                    self.parent_window.log(f"✓ Database updated: {assigned_count} media file(s) assigned to table")
+                else:
+                    self.parent_window.log(f"⚠ No table selected, skipping database update")
 
                 # Reload the selected table to refresh the existing media tree
                 self.parent_window.reload_selected_table()
@@ -1659,46 +1471,62 @@ class MediaReviewWidget(QWidget):
         self.update_file_tree()
         self.save_btn.setEnabled(False)
 
-        # Update the existing preview to show the newly saved file
-        self.show_existing_preview(self.current_file)
+        # Preview will still show the downloaded file after saving
 
         # Update database with newly saved media file
         self.parent_window.log("Updating database for saved media file...")
         try:
-            # Rescan media for all tables to pick up the newly saved file
-            media_result = self.parent_window.table_service.rescan_all_media()
-            self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables with media changes")
+            # Get the current table ID
+            current_table = self.parent_window.selected_table
+            if current_table:
+                # Directly assign the saved media file to the table
+                if self.parent_window.table_service.assign_media_to_table(
+                    current_table.id,
+                    str(local_path),
+                    self.current_file.media_type
+                ):
+                    self.parent_window.log(f"✓ Database updated: Media file assigned to table")
+                else:
+                    self.parent_window.log(f"⚠ Failed to assign media file to table")
+            else:
+                self.parent_window.log(f"⚠ No table selected, skipping database update")
 
             # Reload the selected table to refresh the existing media tree
             self.parent_window.reload_selected_table()
         except Exception as e:
             self.parent_window.log(f"⚠ Error updating database: {e}")
 
-    def delete_all(self):
-        """Delete all cached files for the current table"""
-        reply = QMessageBox.question(self, "Confirm Delete",
-                                     "Delete all cached files for this table?",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+    def manual_search(self):
+        """Prompt user for custom search term and search FTP for media"""
+        if not self.parent_window or not self.parent_window.selected_table:
+            QMessageBox.warning(self, "No Table Selected", "Please select a table first.")
+            return
 
-        if reply == QMessageBox.StandardButton.Yes:
-            deleted_count = 0
-            for file in self.files:
-                if file.temp_path.exists():
-                    file.temp_path.unlink()
-                    deleted_count += 1
+        # Get the current table name as default suggestion
+        current_table = self.parent_window.selected_table
+        suggested_search = current_table.name.split('(')[0].strip()
 
-            # Clear the files list and update UI
-            self.files = []
-            self.update_file_tree()
-            self.downloaded_image_label.setText("Select a file to preview")
-            self.downloaded_image_label.show()
-            self.downloaded_video_widget.hide()
-            self.existing_image_label.setText("No existing file")
-            self.existing_image_label.show()
-            self.existing_video_widget.hide()
-            self.save_btn.setEnabled(False)
+        # Show input dialog
+        from PyQt6.QtWidgets import QInputDialog
+        search_term, ok = QInputDialog.getText(
+            self,
+            "Manual Media Search",
+            f"Enter search term for FTP media files:\n(Current table: {current_table.name})",
+            QLineEdit.EchoMode.Normal,
+            suggested_search
+        )
 
-            QMessageBox.information(self, "Deleted", f"Deleted {deleted_count} cached files")
+        if ok and search_term:
+            search_term = search_term.strip()
+            if not search_term:
+                QMessageBox.warning(self, "Invalid Search", "Search term cannot be empty.")
+                return
+
+            self.parent_window.log(f"Starting manual search for: '{search_term}'")
+
+            # Ask parent window to initiate the search
+            if hasattr(self.parent_window, 'start_manual_search'):
+                self.parent_window.start_manual_search(search_term)
 
     def closeEvent(self, event):
         """Handle widget close event - cleanup media players"""
@@ -1765,8 +1593,26 @@ class MediaReviewWidget(QWidget):
 
                 # Update database
                 try:
-                    media_result = self.parent_window.table_service.rescan_all_media()
-                    self.parent_window.log(f"✓ Database updated: {media_result['updated']} tables")
+                    # Get the current table ID
+                    current_table = self.parent_window.selected_table
+                    if current_table:
+                        # Directly assign each saved media file to the table
+                        assigned_count = 0
+                        for file in files_to_save:
+                            if file.status == "saved":
+                                local_filename = f"{file.table_name}{file.temp_path.suffix}"
+                                local_path = get_local_media_path(file.media_type, local_filename, self.config)
+
+                                if self.parent_window.table_service.assign_media_to_table(
+                                    current_table.id,
+                                    str(local_path),
+                                    file.media_type
+                                ):
+                                    assigned_count += 1
+
+                        self.parent_window.log(f"✓ Database updated: {assigned_count} media file(s) assigned to table")
+                    else:
+                        self.parent_window.log(f"⚠ No table selected, skipping database update")
                 except Exception as e:
                     self.parent_window.log(f"⚠ Error updating database: {e}")
 
@@ -1812,6 +1658,8 @@ class MainWindow(QMainWindow):
     def init_ui(self):
         self.setWindowTitle("PinballUX - Table Manager")
         self.setMinimumSize(1200, 800)
+        # Start with a larger default size to accommodate all buttons
+        self.resize(1600, 900)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -1934,9 +1782,9 @@ class MainWindow(QMainWindow):
         self.import_pack_btn.setEnabled(False)
         button_layout.addWidget(self.import_pack_btn)
 
-        self.import_csv_btn = QPushButton("Import CSV Database")
+        self.import_csv_btn = QPushButton("Pinball DB Import")
         self.import_csv_btn.clicked.connect(self.import_csv_database)
-        self.import_csv_btn.setToolTip("Import table metadata (theme, IPDB number) from PinballX database CSV")
+        self.import_csv_btn.setToolTip("Import table metadata from Pinball Spreadsheet CSV\nDownload from: https://virtualpinballspreadsheet.github.io/export")
         button_layout.addWidget(self.import_csv_btn)
 
         self.refresh_cache_btn = QPushButton("Refresh Media Cache")
@@ -2149,6 +1997,9 @@ class MainWindow(QMainWindow):
             self.import_pack_btn.setEnabled(True)
             self.log(f"Selected table: {self.selected_table.name}")
 
+            # Clear the downloaded files from previous table
+            self.media_review.clear_files()
+
             # Update the existing media tree in the media review widget
             self.media_review.update_existing_media_tree()
 
@@ -2210,6 +2061,69 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
         self.progress_bar.show()
         self.log(f"Starting download for categories: {', '.join(selected_categories)}...")
+
+    def start_manual_search(self, search_term: str):
+        """Start a manual search for media using a custom search term instead of table name"""
+        username = self.username_input.text()
+        password = self.password_input.text()
+
+        if not username or not password:
+            QMessageBox.warning(self, "Error", "Please enter FTP username and password")
+            return
+
+        if not self.selected_table:
+            QMessageBox.warning(self, "Error", "No table selected")
+            return
+
+        # Get selected categories
+        selected_categories = [key for key, checkbox in self.media_category_checkboxes.items() if checkbox.isChecked()]
+
+        if not selected_categories:
+            QMessageBox.warning(self, "No Categories", "Please select at least one media category")
+            return
+
+        # Clear previous downloads
+        self.media_review.clear_files()
+
+        # Create a modified table object with the custom search term as the name
+        from dataclasses import dataclass
+
+        @dataclass
+        class SearchTable:
+            """Temporary table object for custom search"""
+            id: int
+            name: str
+            display_name: str
+            manufacturer: str = ""
+            year: int = None
+            save_name: str = None  # Original table name for saving files
+
+        # Create search table with custom name for searching, but preserve original name for saving
+        search_table = SearchTable(
+            id=self.selected_table.id,
+            name=search_term,  # Used for FTP search matching
+            display_name=self.selected_table.display_name,
+            manufacturer=self.selected_table.manufacturer or "",
+            year=self.selected_table.year,
+            save_name=self.selected_table.name  # Original table name for file naming
+        )
+
+        # Start download thread with search table
+        self.download_thread = FTPDownloadThread(username, password, search_table, self.config_dir, self.db_manager, selected_categories)
+        self.download_thread.progress.connect(self.update_status)
+        self.download_thread.progress_update.connect(self.update_progress_bar)
+        self.download_thread.file_downloaded.connect(self.on_file_downloaded)
+        self.download_thread.finished.connect(self.download_finished)
+        self.download_thread.start()
+
+        # Update UI state
+        self.download_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.select_table_btn.setEnabled(False)
+        self.status_label.setText("Connecting to FTP server...")
+        self.status_label.setStyleSheet("font-weight: bold; font-size: 14px;")
+        self.progress_bar.show()
+        self.log(f"Starting manual search for '{search_term}' in categories: {', '.join(selected_categories)}...")
 
     def update_status(self, message: str):
         """Update the status label and log"""
@@ -2581,7 +2495,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Import Error", f"Error importing media pack:\n{e}")
 
     def import_csv_database(self):
-        """Import table metadata from PinballX database CSV file"""
+        """Import table metadata from Pinball Spreadsheet CSV file"""
         # Check if CSV file exists in project root first
         default_csv_path = Path(project_root) / "pinballxdatabase.csv"
 
@@ -2589,10 +2503,52 @@ class MainWindow(QMainWindow):
             csv_path = str(default_csv_path)
             self.log(f"Found CSV file: {default_csv_path.name}")
         else:
-            # Fall back to file dialog if not found
+            # Show info dialog with clickable link
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QLabel, QDialogButtonBox
+            from PyQt6.QtCore import Qt
+
+            dialog = QDialog(self)
+            dialog.setWindowTitle("Pinball Spreadsheet CSV")
+            dialog.setMinimumWidth(450)
+
+            layout = QVBoxLayout()
+
+            # Info text
+            info_label = QLabel(
+                "This imports table metadata (theme, IPDB number, etc.) from the Pinball Spreadsheet."
+            )
+            info_label.setWordWrap(True)
+            layout.addWidget(info_label)
+
+            # Clickable link
+            link_label = QLabel(
+                '<br>Download the CSV from:<br>'
+                '<a href="https://virtualpinballspreadsheet.github.io/export">'
+                'https://virtualpinballspreadsheet.github.io/export</a><br><br>'
+                'Do you want to select a CSV file to import?'
+            )
+            link_label.setOpenExternalLinks(True)
+            link_label.setTextFormat(Qt.TextFormat.RichText)
+            link_label.setWordWrap(True)
+            layout.addWidget(link_label)
+
+            # Buttons
+            button_box = QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Yes | QDialogButtonBox.StandardButton.No
+            )
+            button_box.accepted.connect(dialog.accept)
+            button_box.rejected.connect(dialog.reject)
+            layout.addWidget(button_box)
+
+            dialog.setLayout(layout)
+
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+
+            # Fall back to file dialog
             csv_path, _ = QFileDialog.getOpenFileName(
                 self,
-                "Select PinballX Database CSV",
+                "Select Pinball Spreadsheet CSV",
                 str(Path.home()),
                 "CSV Files (*.csv);;All Files (*.*)"
             )

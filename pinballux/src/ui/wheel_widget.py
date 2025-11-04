@@ -1492,57 +1492,12 @@ class WheelMainWindow(QWidget):
             tables = self.table_service.get_all_tables()
             self.logger.info(f"Loaded {len(tables)} tables for wheel")
 
-            # Initialize media manager for finding media files
-            from ..media.manager import MediaManager
-            media_manager = MediaManager(self.config)
-
-            # Convert Table models to dict format
+            # Convert Table models to dict format - use database as source of truth
             table_data = []
             for table in tables:
-                # Find media files for this table using media manager
-                media_files = media_manager.find_table_media(
-                    table.name,
-                    table.manufacturer or '',
-                    table.year
-                )
-
-                # Find wheel image from media system
-                wheel_image_path = ''
-                if hasattr(table, 'wheel_image') and table.wheel_image:
-                    wheel_image_path = table.wheel_image
-                elif media_files.get('wheel_image'):
-                    wheel_image_path = media_files['wheel_image']
-                elif table.playfield_image:
-                    wheel_image_path = table.playfield_image
-
-                # If no direct wheel image, try to find one in the wheel images directory
-                if not wheel_image_path:
-                    from pathlib import Path
-                    media_wheel_dir = Path(self.config.vpx.media_directory) / "images" / "wheel"
-                    if media_wheel_dir.exists():
-                        # Try to find a wheel image that matches the table name
-                        table_name_clean = table.name.replace(':', '').replace('/', '').replace('\\', '')
-                        for ext in ['.png', '.jpg', '.jpeg']:
-                            wheel_file = media_wheel_dir / f"{table_name_clean}{ext}"
-                            if wheel_file.exists():
-                                wheel_image_path = str(wheel_file)
-                                break
-                            # Try with manufacturer and year
-                            if table.manufacturer and table.year:
-                                wheel_file = media_wheel_dir / f"{table_name_clean} ({table.manufacturer} {table.year}){ext}"
-                                if wheel_file.exists():
-                                    wheel_image_path = str(wheel_file)
-                                    break
-
-                # Get table video from media files
-                table_video_path = ''
-                if media_files.get('table_video'):
-                    table_video_path = media_files['table_video']
-                elif table.table_video:
-                    table_video_path = table.table_video
-
-                # Get playfield image from media files or database
-                playfield_image_path = media_files.get('table_image', table.playfield_image or '')
+                # Use database fields directly - database is the source of truth
+                # Fallback to playfield_image for wheel if no dedicated wheel image
+                wheel_image_path = table.wheel_image or table.playfield_image or ''
 
                 data = {
                     'id': table.id,
@@ -1551,14 +1506,16 @@ class WheelMainWindow(QWidget):
                     'year': table.year or '',
                     'file_path': table.file_path,
                     'wheel_image': wheel_image_path,
-                    'image': playfield_image_path,  # playfield image for background
-                    'table_video': table_video_path,
-                    'backglass_image': media_files.get('backglass_image', table.backglass_image or ''),
-                    'backglass_video': media_files.get('backglass_video', table.backglass_video or ''),
-                    'dmd_image': media_files.get('dmd_image', table.dmd_image or ''),
-                    'dmd_video': media_files.get('dmd_video', table.dmd_video or ''),
-                    'table_audio': media_files.get('table_audio', ''),
-                    'launch_audio': media_files.get('launch_audio', table.launch_audio or ''),
+                    'image': table.playfield_image or '',  # playfield image for background
+                    'table_video': table.table_video or '',
+                    'backglass_image': table.backglass_image or '',
+                    'backglass_video': table.backglass_video or '',
+                    'dmd_image': table.dmd_image or '',
+                    'dmd_video': table.dmd_video or '',
+                    'topper_image': table.topper_image or '',
+                    'topper_video': table.topper_video or '',
+                    'table_audio': table.table_audio or '',
+                    'launch_audio': table.launch_audio or '',
                     'play_count': table.play_count or 0,
                     'rating': table.rating or 0,
                     'description': table.description or '',
