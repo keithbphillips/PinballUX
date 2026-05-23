@@ -35,7 +35,7 @@ A Visual Pinball frontend for Linux with multi-monitor support, inspired by Pinb
 **Download and install the .deb package:**
 
 ```bash
-# Download the package and installer
+# Download the latest package and installer
 wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.6.0-1_all.deb
 wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
 chmod +x install.sh
@@ -46,13 +46,13 @@ chmod +x install.sh
 
 Or install manually:
 ```bash
-# Using gdebi (recommended)
+# Using gdebi (recommended — handles dependencies automatically)
 sudo apt install gdebi-core
 sudo gdebi pinballux_0.6.0-1_all.deb
 
-# Or using apt (copy to /tmp first)
-cp pinballux_0.6.0-1_all.deb /tmp/
-sudo apt-get install /tmp/pinballux_0.6.0-1_all.deb
+# Or using dpkg + apt
+sudo dpkg -i pinballux_0.6.0-1_all.deb
+sudo apt-get install -f -y
 ```
 
 Then run `pinballux-setup` to configure and get started!
@@ -63,7 +63,17 @@ See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
 1. Install required system libraries:
 ```bash
-sudo apt install libxcb-cursor0
+sudo apt install \
+    libxcb-cursor0 \
+    python3-venv \
+    python3-pyqt6 \
+    python3-pyqt6.qtmultimedia \
+    python3-pygame \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    gstreamer1.0-libav \
+    gstreamer1.0-gl \
+    gstreamer1.0-qt6
 ```
 
 2. Clone the repository:
@@ -72,54 +82,63 @@ git clone https://github.com/keithbphillips/PinballUX.git
 cd PinballUX
 ```
 
-3. Install Visual Pinball Standalone for Linux:
-
-   **Option A: Automated Installation (Recommended)**
-   - Use the Setup GUI (step 7 below) to download and install VPinball automatically
-   - The Visual Pinball tab includes a "Download and Install" button
-   - VPinball will be downloaded, extracted, and configured automatically
-
-   **Option B: Manual Installation**
-   - Download Visual Pinball Standalone for Linux from [GitHub Releases](https://github.com/vpinball/vpinball/releases)
-   - Extract the VPinball files into the PinballUX root directory:
-   ```bash
-   mkdir vpinball
-   cd vpinball
-   unzip /path/to/VPinballX_GL-*.zip
-   tar -xvf VPinballX_GL-*.tar
-   cd ..
-   ```
-   - The structure should look like: `PinballUX/vpinball/VPinballX_GL`
-
-   **ROM Files**: Place ROM files in `PinballUX/pinballux/data/roms/` directory
-
-4. Set up Python virtual environment:
+3. Create and activate a Python virtual environment with access to system packages:
 ```bash
-sudo apt install python3.12-venv
-python3 -m venv .venv
+python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
 ```
 
-5. Install Python dependencies:
+   > **Why `--system-site-packages`?** PyQt6 multimedia requires GStreamer plugins that are
+   > only available through system packages. Using `--system-site-packages` lets the venv
+   > use the system-installed `python3-pyqt6` and `python3-pyqt6.qtmultimedia` packages,
+   > which are already linked against the system GStreamer stack.
+
+4. Install remaining Python dependencies:
 ```bash
 pip install -r requirements.txt
 ```
 
-6. Add your VPX table files to `pinballux/data/tables/`
+5. Add your VPX table files to `pinballux/data/tables/`
 
-7. **Configure PinballUX** - Run the Setup GUI to configure displays, input, and VPX paths:
+6. Install Visual Pinball Standalone for Linux:
+
+   **Option A: Automated Installation (Recommended)**
+   - Run the Setup GUI (step 7 below) — the Visual Pinball tab has a "Download and Install" button
+   - VPinball will be downloaded, extracted, and configured automatically
+
+   **Option B: Manual Installation**
+   - Download Visual Pinball Standalone for Linux from [GitHub Releases](https://github.com/vpinball/vpinball/releases)
+   - Extract into `vpinball/` inside the project root:
+   ```bash
+   mkdir vpinball
+   unzip /path/to/VPinballX_GL-*.zip -d vpinball/
+   # If the release is a zip-of-tar:
+   # cd vpinball && tar -xvf VPinballX_GL-*.tar && cd ..
+   ```
+   - The executable should end up at `vpinball/VPinballX_GL`
+
+   **ROM Files**: Place ROM files in `pinballux/data/roms/`
+
+7. **Configure PinballUX** — run the Setup GUI to configure displays, input, and VPX paths:
 ```bash
-pinballux-setup
+python setup_gui.py
 ```
 
-See the [Setup GUI](#setup-gui) section below for details.
+   See the [Setup GUI](#setup-gui) section below for details.
 
-8. **Run Table Manager** - Scan tables and download media:
+8. **Run Table Manager** — scan tables and download media:
 ```bash
-pinballux-manager
+python table_manager.py
 ```
 
-See the [Table Manager](#table-manager) section below for details.
+   See the [Table Manager](#table-manager) section below for details.
+
+9. **Launch PinballUX**:
+```bash
+python run_pinballux.py
+# Or use the convenience launcher:
+bash launch_pinballux.sh
+```
 
 ## Setup GUI
 
@@ -128,7 +147,11 @@ The Setup GUI provides a user-friendly interface for configuring all aspects of 
 ### Running Setup GUI
 
 ```bash
+# .deb install
 pinballux-setup
+
+# Source install
+python setup_gui.py
 ```
 
 ### Configuration Tabs
@@ -180,7 +203,11 @@ The Table Manager is a PyQt6 GUI application that handles table scanning, media 
 ### Running Table Manager
 
 ```bash
+# .deb install
 pinballux-manager
+
+# Source install
+python table_manager.py
 ```
 
 On startup, the Table Manager will automatically:
@@ -336,7 +363,11 @@ Control audio playback in `~/.config/pinballux/config.json`:
 
 Run PinballUX:
 ```bash
+# .deb install
 pinballux
+
+# Source install
+python run_pinballux.py
 ```
 
 ### Keyboard Controls

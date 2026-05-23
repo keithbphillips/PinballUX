@@ -7,7 +7,7 @@
 1. **Download the package and installer:**
 
    ```bash
-   wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.1.0-1_all.deb
+   wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.6.0-1_all.deb
    wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
    chmod +x install.sh
    ```
@@ -24,18 +24,18 @@
    Using gdebi:
    ```bash
    sudo apt install gdebi-core
-   sudo gdebi pinballux_0.1.0-1_all.deb
+   sudo gdebi pinballux_0.6.0-1_all.deb
    ```
 
    Using apt (copy to /tmp first to avoid permission issues):
    ```bash
-   cp pinballux_0.1.0-1_all.deb /tmp/
-   sudo apt-get install /tmp/pinballux_0.1.0-1_all.deb
+   cp pinballux_0.6.0-1_all.deb /tmp/
+   sudo apt-get install /tmp/pinballux_0.6.0-1_all.deb
    ```
 
    Or using dpkg:
    ```bash
-   sudo dpkg -i pinballux_0.1.0-1_all.deb
+   sudo dpkg -i pinballux_0.6.0-1_all.deb
    sudo apt-get install -f -y
    ```
 
@@ -63,7 +63,7 @@
 
 ### Option 2: Install from Source
 
-See [README.md](README.md) for detailed source installation instructions.
+See the [Install from Source](README.md#install-from-source) section of README.md for full instructions, including the required system packages and virtual environment setup.
 
 ## Post-Installation
 
@@ -88,8 +88,8 @@ After installation, you can access PinballUX from:
 To update to a new version:
 
 ```bash
-# Download the new .deb package
-sudo gdebi pinballux_0.2.0-1_all.deb
+# Download the new .deb package from the releases page, then:
+sudo gdebi pinballux_0.6.0-1_all.deb
 ```
 
 Your configuration and data will be preserved.

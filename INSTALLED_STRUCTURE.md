@@ -122,8 +122,10 @@
 ```
 ~/.config/pinballux/
 ├── config.json           (created on first run)
-├── tables.db             (SQLite database, created on first run)
-├── pinballux.log         (application log file)
+├── pinballux.db          (SQLite database, created on first run)
+├── ftp_credentials.json  (FTP credentials, saved after first successful login)
+├── logs/
+│   └── pinballux.log     (application log file)
 └── ftp_downloads_temp/   (temporary download directory)
 ```
 
