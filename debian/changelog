@@ -1,3 +1,14 @@
+pinballux (0.6.0-1) unstable; urgency=medium
+
+  * Add loading popup overlay on wheel when VPX table launches
+  * Loading popup fades in when table_launched signal fires, fades out on exit
+  * Supports playfield rotation so popup is correctly oriented on cabinet
+  * Fix loading state shown in table card grid (main_window.py)
+  * Remove unused floating overlay in favour of in-wheel loading indicator
+  * Clean up unused QPropertyAnimation/QEasingCurve imports
+
+ -- Keith Phillips <keith@example.com>  Fri, 23 May 2025 12:00:00 -0500
+
 pinballux (0.5.0-1) unstable; urgency=medium
 
   * Major architectural improvements to media handling

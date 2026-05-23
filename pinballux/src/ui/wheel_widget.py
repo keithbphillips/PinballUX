@@ -1431,6 +1431,9 @@ class WheelMainWindow(QWidget):
         self.setup_ui()
         self.load_tables()
 
+        # Loading popup (created after setup_ui so it has a parent geometry)
+        self.loading_popup = LoadingPopup(self)
+
         # Set focus policy to receive key events
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
 
@@ -1669,15 +1672,19 @@ class WheelMainWindow(QWidget):
                 })
 
     def _on_table_launched(self, table_path: str):
-        """Handle table launched - blank all displays during gameplay"""
-        self.logger.info(f"Table launched, clearing displays for gameplay")
+        """Handle table launched - show loading popup and blank other displays"""
+        self.logger.info(f"Table launched, showing loading popup")
 
         # Stop input polling to avoid interfering with VPX input
         if self.input_manager:
             self.input_manager.stop_polling()
             self.logger.info("Stopped input polling - VPX will handle all input")
 
-        # Hide loading screen on backglass
+        # Show loading popup over the wheel
+        table_name = Path(table_path).stem
+        rotation = self.config.displays.playfield.rotation if self.config and self.config.displays.playfield else 0
+        self.loading_popup.show_loading(table_name, rotation_angle=rotation)
+
         if self.monitor_manager:
             self.monitor_manager.hide_loading("backglass")
 
@@ -1712,6 +1719,8 @@ class WheelMainWindow(QWidget):
     def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
         """Handle table exit - restore displays"""
         self.logger.info(f"Table exited, restoring displays")
+        self.loading_popup.hide_loading()
+
 
         # Restart input polling for frontend navigation
         if self.input_manager:

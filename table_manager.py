@@ -20,10 +20,11 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTreeWidget, QTreeWidgetItem, QTreeWidgetItemIterator,
     QSplitter, QTextEdit, QProgressBar, QMessageBox, QGroupBox, QDialog,
-    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog, QCheckBox
+    QListWidget, QListWidgetItem, QDialogButtonBox, QSizePolicy, QFileDialog, QCheckBox,
+    QStyledItemDelegate, QStyleOptionViewItem, QStyle
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer
-from PyQt6.QtGui import QPixmap, QMovie
+from PyQt6.QtCore import Qt, QThread, pyqtSignal, QSize, QTimer, QRect
+from PyQt6.QtGui import QPixmap, QMovie, QPen, QBrush, QColor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtCore import QUrl
@@ -731,6 +732,57 @@ class TableSelectorDialog(QDialog):
         super().accept()
 
 
+RADIO_ROLE = Qt.ItemDataRole.UserRole + 10  # bool: is this item radio-selected?
+
+
+class RadioButtonDelegate(QStyledItemDelegate):
+    """Paints a radio button indicator in column 0 of the file tree."""
+
+    def paint(self, painter, option, index):
+        if index.column() != 0:
+            super().paint(painter, option, index)
+            return
+
+        selected = index.data(RADIO_ROLE)
+
+        # Draw background/selection highlight manually
+        painter.save()
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.fillRect(option.rect, option.palette.highlight())
+        else:
+            painter.fillRect(option.rect, option.palette.base())
+        painter.restore()
+
+        if selected is None:
+            return
+
+        # Pick foreground color based on background luminance
+        bg = option.palette.color(option.palette.ColorRole.Base)
+        luminance = 0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue()
+        fg = QColor("#ffffff") if luminance < 128 else QColor("#000000")
+        painter.save()
+        painter.setRenderHint(painter.RenderHint.Antialiasing)
+        size = min(option.rect.height() - 6, 14)
+        x = option.rect.x() + (option.rect.width() - size) // 2
+        y = option.rect.y() + (option.rect.height() - size) // 2
+        painter.setPen(QPen(fg, 1.5))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(x, y, size, size)
+        if selected:
+            dot = size // 3
+            dx = x + (size - dot) // 2
+            dy = y + (size - dot) // 2
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QBrush(fg))
+            painter.drawEllipse(dx, dy, dot, dot)
+        painter.restore()
+
+    def sizeHint(self, option, index):
+        if index.column() == 0:
+            return QSize(24, 20)
+        return super().sizeHint(option, index)
+
+
 class MediaReviewWidget(QWidget):
     """Widget for reviewing downloaded media files"""
 
@@ -810,11 +862,12 @@ class MediaReviewWidget(QWidget):
         left_panel.addLayout(button_layout)
 
         self.file_tree = QTreeWidget()
-        self.file_tree.setHeaderLabels(["", "Downloaded Files"])  # Column 0 for checkbox, 1 for name
+        self.file_tree.setHeaderLabels(["", "Downloaded Files"])  # Column 0 for radio, 1 for name
         self.file_tree.itemClicked.connect(self.on_file_clicked)
         self.file_tree.header().setStretchLastSection(True)
         self.file_tree.setColumnCount(2)
-        self.file_tree.setColumnWidth(0, 30)  # Narrow column for checkbox
+        self.file_tree.setColumnWidth(0, 30)  # Narrow column for radio indicator
+        self.file_tree.setItemDelegate(RadioButtonDelegate(self.file_tree))
         left_panel.addWidget(self.file_tree)
 
         # Middle panel - Unified preview for both downloaded and existing files
@@ -983,6 +1036,21 @@ class MediaReviewWidget(QWidget):
                 category_item.setExpanded(False)
                 QTreeWidgetItem(category_item, ["(none)"])
 
+    def _is_file_item_selected(self, item: QTreeWidgetItem) -> bool:
+        """Return True if this pending file item's radio is selected."""
+        return bool(item.data(0, RADIO_ROLE))
+
+    def _select_item_radio(self, selected_item: QTreeWidgetItem, media_type: str):
+        """Select selected_item's radio and deselect all others in the same media_type."""
+        iterator = QTreeWidgetItemIterator(self.file_tree)
+        while iterator.value():
+            item = iterator.value()
+            file = item.data(1, Qt.ItemDataRole.UserRole)
+            if file and file.media_type == media_type and file.status == "pending":
+                item.setData(0, RADIO_ROLE, item is selected_item)
+            iterator += 1
+        self.update_save_button_state()
+
     def update_file_tree(self):
         """Update the file tree with current files"""
         self.file_tree.clear()
@@ -1011,14 +1079,14 @@ class MediaReviewWidget(QWidget):
                 else:
                     type_icon = "📄"
 
-                status_icon = "✓" if file.status == "saved" else "✗" if file.status == "skipped" else "○"
-                file_item = QTreeWidgetItem(type_item, ["", f"{status_icon} {type_icon} {file.ftp_filename}"])
+                status_icon = "✓" if file.status == "saved" else "✗" if file.status == "skipped" else ""
+                prefix = f"{status_icon} " if status_icon else ""
+                file_item = QTreeWidgetItem(type_item, ["", f"{prefix}{type_icon} {file.ftp_filename}"])
                 file_item.setData(1, Qt.ItemDataRole.UserRole, file)
 
-                # Add checkbox for files that haven't been saved
+                # Mark pending items as radio-selectable (False = unselected)
                 if file.status == "pending":
-                    file_item.setFlags(file_item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
-                    file_item.setCheckState(0, Qt.CheckState.Unchecked)
+                    file_item.setData(0, RADIO_ROLE, False)
 
         # Resize columns to fit content
         self.file_tree.resizeColumnToContents(0)
@@ -1039,13 +1107,9 @@ class MediaReviewWidget(QWidget):
 
         self.current_file = file
 
-        # Handle exclusive checkbox selection per media type
-        if column == 0:  # Checkbox column clicked
-            # If this file was just checked, uncheck all other files of the same media type
-            if file and item.checkState(0) == Qt.CheckState.Checked:
-                self.uncheck_other_files_in_media_type(item, file.media_type)
-
-            self.update_save_button_state()
+        # Any column click on a pending file selects its radio
+        if file and file.status == "pending":
+            self._select_item_radio(item, file.media_type)
 
         # Stop and cleanup unified media player completely
         self.media_player.stop()
@@ -1150,8 +1214,11 @@ class MediaReviewWidget(QWidget):
             self.preview_layout.addWidget(self.preview_image_label)
             self.preview_image_label.raise_()
             self.preview_image_label.setFocus()
-            self.preview_image_label.setText(f"🔊 Click to play: {file_display_name}")
+            self.preview_image_label.setText(f"🔊 Click to pause: {file_display_name}")
+            self.media_player.setVideoOutput(None)
             self.media_player.setAudioOutput(self.audio_output)
+            self.media_player.setSource(QUrl.fromLocalFile(str(file_path)))
+            self.media_player.play()
 
     def show_downloaded_preview(self, file: DownloadedFile):
         """Show preview of a downloaded file"""
@@ -1237,29 +1304,6 @@ class MediaReviewWidget(QWidget):
             # If paused or stopped, play/resume
             self.media_player.play()
 
-    def uncheck_other_files_in_media_type(self, checked_item: QTreeWidgetItem, media_type: str):
-        """Uncheck all other files in the same media type category
-
-        This ensures only ONE file per media type can be selected at a time.
-        For example, if there are multiple table videos, only one should be checked.
-        """
-        iterator = QTreeWidgetItemIterator(self.file_tree)
-        while iterator.value():
-            item = iterator.value()
-
-            # Skip the item that was just checked
-            if item == checked_item:
-                iterator += 1
-                continue
-
-            file = item.data(1, Qt.ItemDataRole.UserRole)
-
-            # If this file is the same media type and is checked, uncheck it
-            if file and file.media_type == media_type and file.status == "pending":
-                if item.checkState(0) == Qt.CheckState.Checked:
-                    item.setCheckState(0, Qt.CheckState.Unchecked)
-
-            iterator += 1
 
     def update_save_button_state(self):
         """Update save button enabled state based on selections"""
@@ -1267,65 +1311,52 @@ class MediaReviewWidget(QWidget):
         iterator = QTreeWidgetItemIterator(self.file_tree)
         while iterator.value():
             item = iterator.value()
-            file = item.data(1, Qt.ItemDataRole.UserRole)
-            if file and file.status == "pending":
-                if item.checkState(0) == Qt.CheckState.Checked:
-                    has_checked = True
-                    break
+            if item.data(0, RADIO_ROLE):
+                has_checked = True
+                break
             iterator += 1
-
         self.save_btn.setEnabled(has_checked)
 
     def select_all(self):
-        """Select all pending files (last file in each media type will be selected due to exclusive logic)"""
-        # Track which media types we've seen
-        selected_per_type = {}
-
-        # First pass: collect all items by media type
+        """Select the first pending file in each media type category."""
+        seen_types = set()
         iterator = QTreeWidgetItemIterator(self.file_tree)
         while iterator.value():
             item = iterator.value()
             file = item.data(1, Qt.ItemDataRole.UserRole)
             if file and file.status == "pending":
-                if file.media_type not in selected_per_type:
-                    selected_per_type[file.media_type] = []
-                selected_per_type[file.media_type].append(item)
+                if file.media_type not in seen_types:
+                    seen_types.add(file.media_type)
+                    self._select_item_radio(item, file.media_type)
+                else:
+                    item.setData(0, RADIO_ROLE, False)
             iterator += 1
-
-        # Second pass: check the last item of each media type
-        # (this simulates user clicking through all items, with last click winning)
-        for media_type, items in selected_per_type.items():
-            # Check the last item in each category
-            if items:
-                items[-1].setCheckState(0, Qt.CheckState.Checked)
-
         self.update_save_button_state()
 
     def deselect_all(self):
-        """Deselect all files"""
+        """Deselect all files."""
         iterator = QTreeWidgetItemIterator(self.file_tree)
         while iterator.value():
             item = iterator.value()
-            file = item.data(1, Qt.ItemDataRole.UserRole)
-            if file and file.status == "pending":
-                item.setCheckState(0, Qt.CheckState.Unchecked)
+            if item.data(0, RADIO_ROLE) is not None:
+                item.setData(0, RADIO_ROLE, False)
             iterator += 1
         self.update_save_button_state()
 
     def save_selected(self):
         """Save all selected (checked) files"""
-        # Collect checked files
+        # Collect selected files
         files_to_save = []
         iterator = QTreeWidgetItemIterator(self.file_tree)
         while iterator.value():
             item = iterator.value()
             file = item.data(1, Qt.ItemDataRole.UserRole)
-            if file and file.status == "pending" and item.checkState(0) == Qt.CheckState.Checked:
+            if file and file.status == "pending" and self._is_file_item_selected(item):
                 files_to_save.append(file)
             iterator += 1
 
         if not files_to_save:
-            QMessageBox.information(self, "No Selection", "Please select files to save using the checkboxes.")
+            QMessageBox.information(self, "No Selection", "Please select files to save using the radio buttons.")
             return
 
         # Ask for confirmation
@@ -1560,7 +1591,7 @@ class MediaReviewWidget(QWidget):
         while iterator.value():
             item = iterator.value()
             file = item.data(1, Qt.ItemDataRole.UserRole)
-            if file and file.status == "pending" and item.checkState(0) == Qt.CheckState.Checked:
+            if file and file.status == "pending" and self._is_file_item_selected(item):
                 files_to_save.append(file)
             iterator += 1
 
@@ -1665,12 +1696,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(central_widget)
         layout = QVBoxLayout(central_widget)
 
-        # Login section (only show if no saved credentials)
-        self.login_group = QGroupBox("FTP Login")
+        # Login section - always visible so credentials can be corrected
+        self.login_group = QGroupBox("FTP Login (gameex.com — use your email address as username)")
         login_layout = QVBoxLayout()
 
         cred_layout = QHBoxLayout()
-        cred_layout.addWidget(QLabel("Username:"))
+        cred_layout.addWidget(QLabel("Username (email):"))
         self.username_input = QLineEdit()
         cred_layout.addWidget(self.username_input)
 
@@ -1679,10 +1710,11 @@ class MainWindow(QMainWindow):
         self.password_input.setEchoMode(QLineEdit.EchoMode.Password)
         cred_layout.addWidget(self.password_input)
 
-        self.save_creds_btn = QPushButton("Save Credentials")
-        self.save_creds_btn.clicked.connect(self.save_credentials)
-        cred_layout.addWidget(self.save_creds_btn)
+        self.reset_creds_btn = QPushButton("Clear Saved Credentials")
+        self.reset_creds_btn.clicked.connect(self.reset_credentials)
+        cred_layout.addWidget(self.reset_creds_btn)
 
+        login_layout.addWidget(QLabel("Credentials are saved automatically after a successful login."))
         login_layout.addLayout(cred_layout)
         self.login_group.setLayout(login_layout)
         layout.addWidget(self.login_group)
@@ -1824,26 +1856,21 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.media_review)
 
     def load_saved_credentials(self):
-        """Load saved credentials if available"""
+        """Pre-fill credentials from saved file if available."""
         creds = load_credentials(self.config_dir)
         if creds:
             self.username_input.setText(creds[0])
             self.password_input.setText(creds[1])
-            # Hide login section if credentials exist
-            self.login_group.hide()
-            self.log("✓ Using saved credentials")
+            self.log("✓ Saved credentials loaded — update and retry if login fails")
 
-    def save_credentials(self):
-        """Save credentials to file"""
-        username = self.username_input.text()
-        password = self.password_input.text()
-
-        if not username or not password:
-            QMessageBox.warning(self, "Error", "Please enter username and password")
-            return
-
-        save_credentials(self.config_dir, username, password)
-        self.log("✓ Credentials saved")
+    def reset_credentials(self):
+        """Clear saved credentials and input fields."""
+        creds_file = get_credentials_file(self.config_dir)
+        if creds_file.exists():
+            creds_file.unlink()
+        self.username_input.clear()
+        self.password_input.clear()
+        self.log("✓ Credentials cleared — enter your email and password to log in")
 
     def check_missing_media_categories(self, table) -> List[str]:
         """Check which media categories are missing for a table
@@ -2161,10 +2188,13 @@ class MainWindow(QMainWindow):
         if success:
             self.status_label.setText("✓ Download Complete")
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+            # Save credentials only after a confirmed successful login
+            save_credentials(self.config_dir, self.username_input.text(), self.password_input.text())
         else:
             if "stopped" not in message.lower():
                 self.status_label.setText("✗ Download Failed")
                 self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
+                self.log("Tip: GameEx FTP requires your email address as the username.")
 
         self.log(message)
 
@@ -2331,9 +2361,12 @@ class MainWindow(QMainWindow):
         if success:
             self.status_label.setText("✓ Cache Refreshed")
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: green;")
+            # Save credentials only after a confirmed successful login
+            save_credentials(self.config_dir, self.username_input.text(), self.password_input.text())
         else:
             self.status_label.setText("✗ Cache Refresh Failed")
             self.status_label.setStyleSheet("font-weight: bold; font-size: 14px; color: red;")
+            self.log("Tip: GameEx FTP requires your email address as the username.")
 
         self.log(message)
         QMessageBox.information(self, "Cache Refresh", message)

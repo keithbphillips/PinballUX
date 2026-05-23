@@ -100,6 +100,33 @@ class TableWidget(QFrame):
         self.is_selected = selected
         self._update_style()
 
+    def set_loading(self, loading: bool):
+        """Show or hide a loading indicator over the card."""
+        if loading:
+            self.media_widget.hide()
+            self.name_label.setText("⏳ Loading…")
+            self.name_label.setStyleSheet(
+                "font-weight: bold; font-size: 15px; color: #ffcc00;"
+            )
+            self.info_label.setText(self.table_data.get('name', ''))
+            self.info_label.setStyleSheet("font-size: 12px; color: #aaa;")
+            self.setCursor(Qt.CursorShape.WaitCursor)
+        else:
+            self.media_widget.show()
+            self.name_label.setText(self.table_data.get('name', 'Unknown Table'))
+            self.name_label.setStyleSheet(
+                "font-weight: bold; font-size: 14px; color: white;"
+            )
+            manufacturer = self.table_data.get('manufacturer', '')
+            year = self.table_data.get('year', '')
+            info_text = (
+                f"{manufacturer} ({year})" if manufacturer and year
+                else manufacturer or year or ''
+            )
+            self.info_label.setText(info_text)
+            self.info_label.setStyleSheet("font-size: 12px; color: #ccc;")
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+
     def mousePressEvent(self, event):
         """Handle mouse press events"""
         if event.button() == Qt.MouseButton.LeftButton:
@@ -131,8 +158,16 @@ class MainWindow(QWidget):
         # Audio player for launch sounds
         self.audio_player = AudioPlayer(self)
 
+        self._loading_widget = None  # TableWidget currently showing loading state
+
         self._setup_ui()
         self._populate_tables()
+
+        # Connect launch manager signals
+        if self.launch_manager:
+            self.launch_manager.launcher.table_launched.connect(self._on_table_launched)
+            self.launch_manager.launcher.table_exited.connect(self._on_table_exited)
+            self.launch_manager.launcher.table_crashed.connect(self._on_table_exited_or_crashed)
 
         # Attract mode timer
         self.attract_timer = QTimer()
@@ -431,6 +466,24 @@ class MainWindow(QWidget):
 
         super().keyPressEvent(event)
 
+    def _clear_loading_widget(self):
+        """Remove loading state from whichever card is currently showing it."""
+        if self._loading_widget is not None:
+            self._loading_widget.set_loading(False)
+            self._loading_widget = None
+
+    def _on_table_launched(self, table_path: str):
+        """Clear loading state once VPinball has started successfully."""
+        self._clear_loading_widget()
+
+    def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
+        """Clear loading state when the table exits."""
+        self._clear_loading_widget()
+
+    def _on_table_exited_or_crashed(self, table_path: str, *args):
+        """Clear loading state on crash."""
+        self._clear_loading_widget()
+
     def _launch_selected_table(self):
         """Launch the currently selected table"""
         if not self.current_selected_table or not self.launch_manager:
@@ -457,10 +510,18 @@ class MainWindow(QWidget):
                     'effect': 'launching'
                 })
 
+            # Show loading state on the selected card
+            for widget in self.table_widgets:
+                if widget.table_data == self.current_selected_table:
+                    widget.set_loading(True)
+                    self._loading_widget = widget
+                    break
+
             # Launch the table
             success = self.launch_manager.launch_table_by_id(table_id)
             if not success:
                 self.logger.error("Failed to launch table")
+                self._clear_loading_widget()
                 # Update displays to show error
                 if self.monitor_manager:
                     self.monitor_manager.update_display_content("dmd", {
@@ -471,5 +532,4 @@ class MainWindow(QWidget):
     def resizeEvent(self, event):
         """Handle window resize"""
         super().resizeEvent(event)
-        # Recalculate grid when window is resized
-        QTimer.singleShot(100, self._update_grid)  # Slight delay to avoid rapid updates
+        QTimer.singleShot(100, self._update_grid)

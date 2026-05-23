@@ -1676,6 +1676,12 @@ class SetupWindow(QMainWindow):
 
         # Buttons
         button_layout = QHBoxLayout()
+
+        reset_btn = QPushButton("Reset All to Defaults")
+        reset_btn.clicked.connect(self.reset_to_defaults)
+        reset_btn.setStyleSheet("color: #ff6666; font-size: 13px; padding: 8px;")
+        button_layout.addWidget(reset_btn)
+
         button_layout.addStretch()
 
         save_btn = QPushButton("Save Configuration")
@@ -1688,6 +1694,40 @@ class SetupWindow(QMainWindow):
         button_layout.addWidget(cancel_btn)
 
         layout.addLayout(button_layout)
+
+    def reset_to_defaults(self):
+        """Delete all config and credentials, reload with defaults."""
+        reply = QMessageBox.warning(
+            self,
+            "Reset All Configuration",
+            "This will delete all saved configuration and FTP credentials and reset everything to defaults.\n\nAre you sure?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        config_dir = Path.home() / ".config" / "pinballux"
+        for filename in ("config.json", "ftp_credentials.json"):
+            path = config_dir / filename
+            if path.exists():
+                path.unlink()
+
+        # Reload with fresh defaults
+        self.config = Config()
+        self.display_tab.config = self.config
+        self.vpx_tab.config = self.config
+        self.keyboard_tab.config = self.config
+        self.joystick_tab.config = self.config
+        self.audio_tab.config = self.config
+
+        self.display_tab.init_ui()
+        self.vpx_tab.init_ui()
+        self.keyboard_tab.init_ui()
+        self.joystick_tab.init_ui()
+        self.audio_tab.init_ui()
+
+        QMessageBox.information(self, "Reset Complete", "Configuration reset to defaults.\nFTP credentials have also been cleared.")
 
     def save_config(self):
         """Save all configuration"""
