@@ -2,7 +2,9 @@
 
 A Visual Pinball frontend for Linux with multi-monitor support, inspired by PinballX.
 
-**Tested on**: Ubuntu 24.04.3 LTS | Intel i7 | NVIDIA GTX 1660
+For help and information: https://x.com/PinballUX
+
+**Tested on**: Ubuntu 24.04.3 LTS | Intel i7 | NVIDIA RTX 3070
 
 ## Screenshots
 
