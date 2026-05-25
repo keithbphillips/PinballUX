@@ -1293,6 +1293,23 @@ class VPXConfigTab(QWidget):
         if dir_path:
             self.media_dir.setText(dir_path)
 
+    def _get_vpinball_dest_dir(self) -> Path:
+        """Return the vpinball install directory.
+
+        When frozen (AppImage), __file__ resolves inside the read-only mount so
+        we derive the path from the configured executable path or a writable
+        user-local default instead.
+        """
+        is_frozen = (getattr(sys, 'frozen', False)
+                     or hasattr(sys, '_MEIPASS')
+                     or os.environ.get('APPIMAGE'))
+        if is_frozen:
+            exe_cfg = self.config.vpx.executable_path
+            if exe_cfg:
+                return Path(exe_cfg).parent
+            return Path.home() / ".local" / "opt" / "vpinball"
+        return Path(project_root) / "vpinball"
+
     def download_vpinball(self):
         """Download and install VPinball"""
         url = self.vpinball_url.text().strip()
@@ -1301,7 +1318,7 @@ class VPXConfigTab(QWidget):
             return
 
         # Destination directory
-        dest_dir = Path(project_root) / "vpinball"
+        dest_dir = self._get_vpinball_dest_dir()
 
         # Confirm download
         reply = QMessageBox.question(
@@ -1335,7 +1352,7 @@ class VPXConfigTab(QWidget):
 
         if success:
             # Update executable path to the downloaded binary
-            dest_dir = Path(project_root) / "vpinball"
+            dest_dir = self._get_vpinball_dest_dir()
             exe_path = dest_dir / "VPinballX_GL"
             if exe_path.exists():
                 self.exe_path.setText(str(exe_path))
