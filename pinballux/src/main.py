@@ -58,6 +58,14 @@ def setup_vpinmame_roms_symlink():
     """
     logger = logging.getLogger(__name__)
 
+    # AppImage/frozen installs are read-only; the mount path is temporary and
+    # changes each run, so symlinking to it would be wrong.
+    # Check all three indicators: sys.frozen (PyInstaller), sys._MEIPASS (PyInstaller
+    # one-dir), and APPIMAGE env var (set by the AppImage runtime itself).
+    if getattr(sys, 'frozen', False) or hasattr(sys, '_MEIPASS') or os.environ.get('APPIMAGE'):
+        logger.info("Skipping VPinMAME roms symlink setup (running from read-only install)")
+        return
+
     # Get the project roms directory
     project_root = Path(__file__).parent.parent
     roms_dir = project_root / "data" / "roms"
@@ -65,8 +73,9 @@ def setup_vpinmame_roms_symlink():
     # Ensure project roms directory exists (only if writable)
     try:
         roms_dir.mkdir(parents=True, exist_ok=True)
-    except PermissionError:
-        logger.info(f"ROMs directory already exists at {roms_dir}")
+    except OSError:
+        logger.info(f"Could not create ROMs directory at {roms_dir}, skipping symlink setup")
+        return
 
     # Get the VPinMAME roms directory path
     vpinmame_dir = Path.home() / ".pinmame"
@@ -119,8 +128,11 @@ def main():
         logging.warning("Another instance of PinballUX is already running. Exiting.")
         sys.exit(1)
 
-    # Set up VPinMAME roms symlink
-    setup_vpinmame_roms_symlink()
+    # Set up VPinMAME roms symlink (non-fatal if it fails)
+    try:
+        setup_vpinmame_roms_symlink()
+    except Exception as e:
+        logging.warning(f"VPinMAME roms symlink setup failed: {e}")
 
     # Load configuration
     config = Config()
