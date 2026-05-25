@@ -9,7 +9,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
-from PyQt6.QtCore import QObject, QProcess, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
 
 from .config import Config
 from .logger import get_logger
@@ -80,6 +80,7 @@ class VPXLauncher(QObject):
             self.current_process = QProcess()
             self.current_process.finished.connect(self._on_process_finished)
             self.current_process.errorOccurred.connect(self._on_process_error)
+            self.current_process.setProcessEnvironment(self._get_clean_process_env())
 
             # Set working directory to VP executable directory
             vp_dir = str(Path(vp_executable).parent)
@@ -189,6 +190,24 @@ class VPXLauncher(QObject):
         self.logger.error("Visual Pinball Standalone executable not found")
         return None
 
+    def _get_clean_process_env(self) -> QProcessEnvironment:
+        """Return an environment with LD_LIBRARY_PATH restored to its pre-AppImage value.
+
+        PyInstaller and the AppImage runtime both prepend their bundled library
+        directories to LD_LIBRARY_PATH before the process starts. Child processes
+        inherit this, which causes VPinballX_GL to load the wrong Qt/GL libraries
+        and exit immediately. PyInstaller preserves the original value in
+        LD_LIBRARY_PATH_ORIG so we can restore it here.
+        """
+        env = QProcessEnvironment.systemEnvironment()
+        orig = os.environ.get('LD_LIBRARY_PATH_ORIG')
+        if orig is not None:
+            if orig:
+                env.insert('LD_LIBRARY_PATH', orig)
+            else:
+                env.remove('LD_LIBRARY_PATH')
+        return env
+
     def _build_command_args(self, table_path: str, options: Dict[str, Any]) -> list:
         """Build command line arguments for VPinballX_GL"""
         args = []
@@ -269,6 +288,7 @@ class VPXLauncher(QObject):
             self.current_process = QProcess()
             self.current_process.finished.connect(self._on_process_finished)
             self.current_process.errorOccurred.connect(self._on_process_error)
+            self.current_process.setProcessEnvironment(self._get_clean_process_env())
 
             # Set working directory to table directory
             self.current_process.setWorkingDirectory(table_dir)
