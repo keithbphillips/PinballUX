@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=PinballUX
+Comment=Visual Pinball Frontend for Linux
+Exec=pinballux
+Icon=pinballux
+Terminal=false
+Categories=Game;
+StartupNotify=true

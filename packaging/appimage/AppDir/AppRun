@@ -1,0 +1,25 @@
+#!/bin/bash
+# AppImage entry point.
+# PyInstaller's bootloader automatically prepends its _internal/ directory to
+# LD_LIBRARY_PATH and sets Qt plugin paths relative to the executable, so no
+# manual path wiring is needed here.
+#
+# Usage:
+#   ./PinballUX.AppImage                  — launch the main frontend
+#   ./PinballUX.AppImage --setup          — launch the configuration tool
+#   ./PinballUX.AppImage --table-manager  — launch the table manager
+
+APPDIR="$(dirname "$(readlink -f "${0}")")"
+export PINBALLUX_APPDIR="$APPDIR"
+
+case "$1" in
+    --setup)
+        exec "$APPDIR/opt/pinballux/pinballux-setup" "${@:2}"
+        ;;
+    --table-manager)
+        exec "$APPDIR/opt/pinballux/pinballux-manager" "${@:2}"
+        ;;
+    *)
+        exec "$APPDIR/opt/pinballux/pinballux" "$@"
+        ;;
+esac
