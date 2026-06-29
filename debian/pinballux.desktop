@@ -1,9 +1,0 @@
-[Desktop Entry]
-Version=1.0
-Type=Application
-Name=PinballUX
-Comment=Visual Pinball frontend for Linux
-Exec=pinballux
-Icon=pinballux
-Terminal=false
-Categories=Game;Emulator;

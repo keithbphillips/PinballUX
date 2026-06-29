@@ -124,6 +124,14 @@ class PinballUXApp(QMainWindow):
             # Set fullscreen mode
             self.showFullScreen()
 
+            # Grab keyboard focus for the playfield. The backglass/DMD/topper
+            # displays have WindowStaysOnTopHint and map after we do; under labwc
+            # one of them can end up as the focused window, so key presses are
+            # swallowed until the user clicks the playfield. Explicitly activate
+            # ourselves -- deferred slightly so it lands AFTER labwc has finished
+            # assigning focus to the last-mapped window (the race we're fixing).
+            QTimer.singleShot(300, self._claim_focus)
+
             self.logger.info("PinballUX application initialized")
 
         except Exception as e:
@@ -180,6 +188,12 @@ class PinballUXApp(QMainWindow):
             # Set initial geometry
             screen_geom = self.target_screen.geometry()
             self.setGeometry(screen_geom.x(), screen_geom.y(), screen_geom.width(), screen_geom.height())
+
+            # Tell Qt which screen owns this window BEFORE showFullScreen() so the
+            # compositor fullscreens on the right monitor regardless of mouse focus.
+            # windowHandle() exists here because show() was called before this timer fires.
+            if self.windowHandle():
+                self.windowHandle().setScreen(self.target_screen)
         else:
             # Use primary screen
             self.target_screen = None
@@ -209,6 +223,18 @@ class PinballUXApp(QMainWindow):
             # Force window to be on correct screen via windowHandle if available
             if self.windowHandle():
                 self.windowHandle().setScreen(self.target_screen)
+
+    def _claim_focus(self):
+        """Force keyboard focus onto the playfield window.
+
+        Raises and activates the window, and focuses the wheel widget so it
+        receives key events immediately without needing a mouse click. Under
+        XWayland this issues an X11 activate request that labwc honors.
+        """
+        self.raise_()
+        self.activateWindow()
+        if self.main_window is not None:
+            self.main_window.setFocus()
 
     def show(self):
         """Show the application and all display windows"""

@@ -2,8 +2,10 @@
 Version=1.0
 Type=Application
 Name=PinballUX Setup
-Comment=Configure PinballUX displays, input, and VPX settings
-Exec=/home/keith/PinballUX/.venv/bin/python /home/keith/PinballUX/setup_gui.py
-Icon=preferences-system
+Comment=Configure PinballUX DMD position, input, and VPX settings
+Exec=/home/pinballux/PinballUX/run-setup.sh
+Path=/home/pinballux/PinballUX
+Icon=preferences-desktop
 Terminal=false
 Categories=Settings;
+StartupNotify=true

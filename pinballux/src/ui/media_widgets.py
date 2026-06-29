@@ -4,7 +4,7 @@ Media widgets for displaying images and videos in PinballUX
 
 from PyQt6.QtWidgets import (QWidget, QLabel, QVBoxLayout, QHBoxLayout,
                              QFrame, QSizePolicy, QPushButton)
-from PyQt6.QtCore import Qt, QUrl, QTimer, pyqtSignal, QSize
+from PyQt6.QtCore import Qt, QUrl, QTimer, pyqtSignal, QSize, QProcess
 from PyQt6.QtGui import QPixmap, QPainter, QBrush, QColor
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -15,139 +15,131 @@ from ..core.logger import get_logger
 
 logger = get_logger(__name__)
 
+# Controls Qt VIDEO-player audio only: the preview-video sound (VideoWidget) and
+# the wheel background music (background_media_player in wheel_widget). When
+# False, those QMediaPlayers create no QAudioOutput, so the videos play silently.
+# Kept False because Qt6's multimedia backend on the Pi 5 blocks the GUI thread
+# when audio sources are churned, and idle Qt audio streams add nothing useful.
+# (Sound EFFECTS -- launch/nav/table audio -- do NOT use this; AudioPlayer plays
+# them with an external ffplay process instead, off the GUI thread.)
+AUDIO_OUTPUT_ENABLED = False
+
 
 class AudioPlayer(QWidget):
-    """Widget for playing audio files (sound effects, music, etc.)"""
+    """Plays short audio files (launch/nav/table sounds) via an external ffplay
+    process instead of Qt multimedia.
+
+    Why not QMediaPlayer: on the Pi 5, Qt6's multimedia backend blocks the GUI
+    thread when audio sources are churned rapidly -- e.g. stopping table audio
+    and starting a nav sound while moving the wheel -- which freezes the whole
+    frontend. Driving ffplay as a fire-and-forget subprocess keeps audio off the
+    GUI thread and out of Qt entirely, so navigation never blocks. ffplay opens
+    the sound device only while a clip plays and releases it on exit, so there
+    are no lingering streams either.
+
+    The public API (play_once/play/stop/set_volume/is_playing/...) matches the
+    previous QMediaPlayer-based implementation so callers are unchanged.
+    """
 
     playback_started = pyqtSignal()
     playback_stopped = pyqtSignal()
     playback_finished = pyqtSignal()
 
+    FFPLAY = "ffplay"
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.media_player = None
-        self.audio_output = None
         self.current_audio_path = None
-        self.setup_audio_player()
+        self._volume = 1.0   # 0.0 - 1.0
+        self._muted = False
+        self._process = QProcess(self)
+        self._process.started.connect(self.playback_started.emit)
+        self._process.finished.connect(self._on_finished)
+        self._process.errorOccurred.connect(self._on_error)
 
-    def setup_audio_player(self):
-        """Initialize the audio player"""
-        self.media_player = QMediaPlayer(self)
-        self.audio_output = QAudioOutput(self)
-
-        # Connect media player to audio output
-        self.media_player.setAudioOutput(self.audio_output)
-
-        # Connect signals
-        self.media_player.playbackStateChanged.connect(self._on_playback_state_changed)
-        self.media_player.mediaStatusChanged.connect(self._on_media_status_changed)
-        self.media_player.errorOccurred.connect(self._on_error_occurred)
+    def _ffplay_volume(self) -> int:
+        """Map 0.0-1.0 volume to ffplay's 0-100 scale (0 when muted)."""
+        if self._muted:
+            return 0
+        return max(0, min(100, int(round(self._volume * 100))))
 
     def load_audio(self, audio_path: str) -> bool:
-        """Load an audio file"""
-        try:
-            if not Path(audio_path).exists():
-                logger.error(f"Audio file not found: {audio_path}")
-                return False
-
-            # Stop current playback - GStreamer will handle source replacement
-            self.media_player.stop()
-
-            self.current_audio_path = audio_path
-            media_url = QUrl.fromLocalFile(str(Path(audio_path).resolve()))
-            self.media_player.setSource(media_url)
-
-            logger.info(f"Loaded audio: {audio_path}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to load audio {audio_path}: {e}")
+        """Validate and remember the audio file to play next."""
+        if not audio_path or not Path(audio_path).exists():
+            logger.error(f"Audio file not found: {audio_path}")
             return False
+        self.current_audio_path = audio_path
+        return True
 
     def play(self):
-        """Start audio playback"""
-        if self.media_player:
-            self.media_player.play()
+        """Play the currently-loaded file once via ffplay."""
+        if not self.current_audio_path:
+            return
+        self.stop()  # ensure only one clip per player at a time
+        args = ["-nodisp", "-autoexit", "-loglevel", "quiet",
+                "-volume", str(self._ffplay_volume()),
+                self.current_audio_path]
+        self._process.start(self.FFPLAY, args)
 
-    def play_once(self, audio_path: str = None):
-        """Load and play audio file once"""
-        if audio_path:
-            if not self.load_audio(audio_path):
-                return False
+    def play_once(self, audio_path: str = None) -> bool:
+        """Load (optional) and play a file once."""
+        if audio_path and not self.load_audio(audio_path):
+            return False
         self.play()
         return True
 
     def pause(self):
-        """Pause audio playback"""
-        if self.media_player:
-            self.media_player.pause()
+        """ffplay has no external pause; treat as stop."""
+        self.stop()
 
     def stop(self):
-        """Stop audio playback"""
-        if self.media_player:
-            self.media_player.stop()
+        """Stop playback by terminating the ffplay process (releases device)."""
+        if self._process.state() != QProcess.ProcessState.NotRunning:
+            self._process.kill()
+            self._process.waitForFinished(200)
+            self.playback_stopped.emit()
 
     def cleanup(self):
-        """Clean up media player resources"""
-        try:
-            if self.media_player:
-                self.media_player.stop()
-                self.media_player.setSource(QUrl())
-                self.media_player.setAudioOutput(None)
-                self.media_player = None
-            if self.audio_output:
-                self.audio_output = None
-        except Exception as e:
-            pass  # Ignore cleanup errors
+        """Stop any playback (called on shutdown)."""
+        self.stop()
 
     def set_volume(self, volume: float):
-        """Set audio volume (0.0 to 1.0)"""
-        if self.audio_output:
-            self.audio_output.setVolume(volume)
+        """Set volume (0.0 to 1.0); applied to the next clip played."""
+        self._volume = max(0.0, min(1.0, volume))
 
     def set_muted(self, muted: bool):
-        """Set audio mute state"""
-        if self.audio_output:
-            self.audio_output.setMuted(muted)
+        """Set mute state; applied to the next clip played."""
+        self._muted = bool(muted)
+
+    def detach_audio(self):
+        """Release the audio device. With ffplay, stopping is sufficient -- the
+        device is only held while a clip is actually playing."""
+        self.stop()
+
+    def reattach_audio(self):
+        """No-op for ffplay: the next play() opens the device fresh."""
+        pass
 
     def get_volume(self) -> float:
-        """Get current volume (0.0 to 1.0)"""
-        if self.audio_output:
-            return self.audio_output.volume()
-        return 0.0
+        """Get current volume (0.0 to 1.0)."""
+        return self._volume
 
     def is_playing(self) -> bool:
-        """Check if audio is currently playing"""
-        if self.media_player:
-            return self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
-        return False
+        """Check if an ffplay clip is currently running."""
+        return self._process.state() != QProcess.ProcessState.NotRunning
 
-    def _on_playback_state_changed(self, state):
-        """Handle playback state changes"""
-        if state == QMediaPlayer.PlaybackState.PlayingState:
-            self.playback_started.emit()
-            logger.debug(f"Audio playback started: {self.current_audio_path}")
-        elif state == QMediaPlayer.PlaybackState.StoppedState:
-            self.playback_stopped.emit()
-            logger.debug(f"Audio playback stopped: {self.current_audio_path}")
+    def _on_finished(self, exit_code, exit_status):
+        """ffplay exited (clip ended or was killed)."""
+        self.playback_finished.emit()
 
-    def _on_media_status_changed(self, status):
-        """Handle media status changes"""
-        if status == QMediaPlayer.MediaStatus.EndOfMedia:
-            self.playback_finished.emit()
-            logger.debug(f"Audio playback finished: {self.current_audio_path}")
-        elif status == QMediaPlayer.MediaStatus.InvalidMedia:
-            logger.error(f"Invalid audio media: {self.current_audio_path}")
-
-    def _on_error_occurred(self, error, error_string):
-        """Handle media player errors"""
-        logger.error(f"Audio player error: {error_string}")
+    def _on_error(self, error):
+        """ffplay failed to start or crashed."""
+        logger.error(f"ffplay error ({error}) for {self.current_audio_path}")
 
     def clear_audio(self):
-        """Clear the current audio"""
+        """Stop and forget the current audio."""
         self.stop()
         self.current_audio_path = None
-        self.media_player.setSource(QUrl())
 
 
 class MediaDisplayWidget(QFrame):
@@ -286,11 +278,14 @@ class VideoWidget(QWidget):
     def setup_media_player(self):
         """Initialize the media player"""
         self.media_player = QMediaPlayer(self)
-        self.audio_output = QAudioOutput(self)
+        # Only open an audio device when frontend audio is enabled (see
+        # AUDIO_OUTPUT_ENABLED). Video still plays; it's just silent.
+        self.audio_output = QAudioOutput(self) if AUDIO_OUTPUT_ENABLED else None
         self.video_widget = QVideoWidget(self)
 
         # Connect media player to audio and video outputs
-        self.media_player.setAudioOutput(self.audio_output)
+        if self.audio_output:
+            self.media_player.setAudioOutput(self.audio_output)
         self.media_player.setVideoOutput(self.video_widget)
 
         # Connect signals
@@ -426,6 +421,23 @@ class VideoWidget(QWidget):
         """Set audio mute state"""
         if self.audio_output:
             self.audio_output.setMuted(muted)
+
+    def detach_audio(self):
+        """Detach the audio output to fully release the audio device.
+
+        QMediaPlayer.stop() leaves the QAudioOutput's playback stream open on
+        the sound device (idle, but still claimed). Detaching it tears that
+        stream down so it can't contend with VPX for the sink during play.
+        """
+        if self.media_player and self.media_player.audioOutput() is not None:
+            self.media_player.stop()
+            self.media_player.setAudioOutput(None)
+
+    def reattach_audio(self):
+        """Re-attach the audio output previously dropped by detach_audio()."""
+        if (self.media_player and self.audio_output
+                and self.media_player.audioOutput() is None):
+            self.media_player.setAudioOutput(self.audio_output)
 
     def set_position(self, position_ms: int):
         """Set playback position in milliseconds"""

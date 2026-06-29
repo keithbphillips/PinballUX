@@ -16,7 +16,7 @@ import shutil
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QLineEdit, QPushButton, QTabWidget, QFormLayout,
-    QSpinBox, QCheckBox, QGroupBox, QFileDialog, QMessageBox,
+    QSpinBox, QDoubleSpinBox, QCheckBox, QGroupBox, QFileDialog, QMessageBox,
     QComboBox, QListWidget, QListWidgetItem, QScrollArea, QProgressBar,
     QTextEdit
 )
@@ -40,13 +40,71 @@ import configparser
 # Import the gamecontroller manager
 try:
     from gamecontroller_manager import GameControllerManager
-    from dmd_position_calculator import DMDPositionCalculator
 except ImportError:
     # If not in Python path, try relative import
     import sys
     sys.path.insert(0, str(Path(__file__).parent))
     from gamecontroller_manager import GameControllerManager
-    from dmd_position_calculator import DMDPositionCalculator
+
+
+def setup_vpinmame_roms_symlink():
+    """Ensure ~/.pinmame/roms points at the project's data/roms directory.
+
+    VPinMAME loads ROMs from ~/.pinmame/roms; the project keeps them under
+    pinballux/data/roms. This mirrors the symlink setup done by the frontend
+    (pinballux/src/main.py) so the link is in place after running setup too.
+    """
+    roms_dir = Path(project_root) / "pinballux" / "data" / "roms"
+
+    try:
+        roms_dir.mkdir(parents=True, exist_ok=True)
+    except PermissionError:
+        pass
+
+    vpinmame_dir = Path.home() / ".pinmame"
+    vpinmame_roms = vpinmame_dir / "roms"
+    vpinmame_dir.mkdir(parents=True, exist_ok=True)
+
+    if vpinmame_roms.is_symlink():
+        if vpinmame_roms.resolve() == roms_dir.resolve():
+            return  # Already correct
+        vpinmame_roms.unlink()  # Wrong target - replace it
+    elif vpinmame_roms.exists():
+        # A real directory/file is in the way; don't clobber user data
+        print(f"Warning: {vpinmame_roms} exists and is not a symlink; "
+              f"remove or rename it so the roms symlink can be created.")
+        return
+
+    try:
+        vpinmame_roms.symlink_to(roms_dir, target_is_directory=True)
+    except Exception as e:
+        print(f"Failed to create VPinMAME roms symlink: {e}")
+
+
+def path_inside_roms(path_str):
+    """If `path_str` is at or inside a ROMs folder, return that ROMs dir; else None.
+
+    The Table/Media directories must never point inside the ROMs folder. When
+    they do, media downloaded by the Table Manager gets written in among the
+    .zip ROM files (the audio/ images/ videos/ subfolder mess), and relocating
+    it later breaks the database's stored media paths. We resolve symlinks so
+    both the project's data/roms and the ~/.pinmame/roms link are caught.
+    """
+    if not path_str or not path_str.strip():
+        return None
+    roms_candidates = [
+        Path(project_root) / "pinballux" / "data" / "roms",
+        Path.home() / ".pinmame" / "roms",
+    ]
+    target = os.path.realpath(path_str.strip())
+    for cand in roms_candidates:
+        try:
+            roms = os.path.realpath(cand)
+        except Exception:
+            continue
+        if target == roms or target.startswith(roms + os.sep):
+            return roms
+    return None
 
 
 class VPXIniManager:
@@ -377,139 +435,81 @@ class VPXIniManager:
             print(f"Error writing BGSet to VPinballX.ini: {e}")
             return False
 
+    def read_aa_factor(self) -> float:
+        """Read AAFactor (render/texture scaling) from [Player]. Default 0.85."""
+        default = 0.85
+        if not self.ini_path.exists():
+            return default
 
-class ScreenResManager:
-    """Manager for reading/writing ScreenRes.txt for B2S Server"""
-
-    def __init__(self, screenres_path: Optional[Path] = None):
-        """Initialize with optional custom ScreenRes.txt path"""
-        if screenres_path is None:
-            # Default B2S ScreenRes path
-            screenres_path = Path.home() / ".vpinball" / "data" / "tables" / "ScreenRes.txt"
-        self.screenres_path = Path(screenres_path)
-
-    def write_screen_config(self, display_configs: Dict[str, Dict], screens: list) -> bool:
-        """
-        Write ScreenRes.txt from display configurations
-
-        Args:
-            display_configs: Dict with keys 'playfield', 'backglass', 'dmd', 'fulldmd', 'topper'
-                            Each containing {'x', 'y', 'width', 'height', 'screen_number'}
-            screens: List of screen info dicts with 'index', 'x', 'y', 'width', 'height'
-
-        Returns:
-            bool: True if successful, False otherwise
-        """
         try:
-            # Ensure directory exists
-            self.screenres_path.parent.mkdir(parents=True, exist_ok=True)
-
-            # Create backup if file exists
-            if self.screenres_path.exists():
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                backup_path = self.screenres_path.parent / f"ScreenRes.txt.backup_{timestamp}"
-                shutil.copy2(self.screenres_path, backup_path)
-
-            # Get configurations with defaults
-            playfield = display_configs.get('playfield', {})
-            backglass = display_configs.get('backglass', {})
-            dmd = display_configs.get('dmd', {})
-            fulldmd = display_configs.get('fulldmd', {})
-            topper = display_configs.get('topper', {})
-
-            # Build ScreenRes.txt content
-            lines = []
-
-            # Lines 1-2: Playfield width/height
-            lines.append(str(playfield.get('width', 1920)))
-            lines.append(str(playfield.get('height', 1080)))
-
-            # Lines 3-4: Backglass width/height
-            lines.append(str(backglass.get('width', 1920)))
-            lines.append(str(backglass.get('height', 1080)))
-
-            # Lines 5-7: Backglass monitor number and position
-            bg_screen_num = backglass.get('screen_number', 0)
-            lines.append(str(bg_screen_num))
-            lines.append(str(backglass.get('x', 0)))
-            lines.append(str(backglass.get('y', 0)))
-
-            # Lines 8-11: DMD dimensions and position
-            # Prefer fulldmd if available, otherwise use regular dmd
-            dmd_config = fulldmd if fulldmd.get('width') else dmd
-            lines.append(str(dmd_config.get('width', 0)))
-            lines.append(str(dmd_config.get('height', 0)))
-            lines.append(str(dmd_config.get('x', 0)))
-            lines.append(str(dmd_config.get('y', 0)))
-
-            # Lines 12-15: Topper dimensions and position
-            lines.append(str(topper.get('width', 0)))
-            lines.append(str(topper.get('height', 0)))
-            lines.append(str(topper.get('x', 0)))
-            lines.append(str(topper.get('y', 0)))
-
-            # Line 16: BGSet (0 = default layout)
-            lines.append('0')
-
-            # Line 17+: Version comment
-            lines.append(f'# Generated by PinballUX Setup - {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
-
-            # Write file
-            with open(self.screenres_path, 'w') as f:
-                f.write('\n'.join(lines) + '\n')
-
-            return True
-
+            with open(self.ini_path, 'r') as f:
+                for line in f:
+                    line = line.strip()
+                    if '=' in line and not line.startswith(';'):
+                        key_part = line.split('=')[0].strip()
+                        value_part = line.split('=', 1)[1].strip()
+                        if key_part == 'AAFactor' and value_part:
+                            return float(value_part)
         except Exception as e:
-            print(f"Error writing ScreenRes.txt: {e}")
-            import traceback
-            traceback.print_exc()
+            print(f"Error reading AAFactor from VPinballX.ini: {e}")
+
+        return default
+
+    def write_aa_factor(self, value: float) -> bool:
+        """Write AAFactor (render/texture scaling) to the [Player] section."""
+        return self._write_key('Player', 'AAFactor', value)
+
+    def _write_key(self, section: str, key: str, value) -> bool:
+        """Update (or insert) a single key within the given .ini section."""
+        if not self.ini_path.exists():
             return False
 
-    def read_screen_config(self) -> Dict[str, any]:
-        """Read existing ScreenRes.txt configuration"""
-        if not self.screenres_path.exists():
-            return {}
-
         try:
-            with open(self.screenres_path, 'r') as f:
-                lines = [line.strip() for line in f.readlines() if not line.strip().startswith('#')]
+            # Create backup
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_path = self.ini_path.parent / f"VPinballX.ini.backup_{timestamp}"
+            shutil.copy2(self.ini_path, backup_path)
 
-            if len(lines) < 16:
-                return {}
+            with open(self.ini_path, 'r') as f:
+                lines = f.readlines()
 
-            config = {
-                'playfield': {
-                    'width': int(lines[0]),
-                    'height': int(lines[1])
-                },
-                'backglass': {
-                    'width': int(lines[2]),
-                    'height': int(lines[3]),
-                    'screen_number': int(lines[4]),
-                    'x': int(lines[5]),
-                    'y': int(lines[6])
-                },
-                'dmd': {
-                    'width': int(lines[7]),
-                    'height': int(lines[8]),
-                    'x': int(lines[9]),
-                    'y': int(lines[10])
-                },
-                'topper': {
-                    'width': int(lines[11]),
-                    'height': int(lines[12]),
-                    'x': int(lines[13]),
-                    'y': int(lines[14])
-                },
-                'bgset': int(lines[15])
-            }
+            in_section = False
+            section_idx = None
+            next_section_idx = None
+            updated = False
 
-            return config
+            for i, line in enumerate(lines):
+                stripped = line.strip()
+                if stripped.startswith('[') and stripped.endswith(']'):
+                    if stripped == f'[{section}]':
+                        in_section = True
+                        section_idx = i
+                    elif in_section:
+                        next_section_idx = i
+                        break
+                    else:
+                        in_section = False
+                elif in_section and '=' in stripped and not stripped.startswith(';'):
+                    if stripped.split('=')[0].strip() == key:
+                        lines[i] = f"{key} = {value}\n"
+                        updated = True
+                        break
+
+            # Key not present in the section yet - insert it
+            if not updated and section_idx is not None:
+                insert_idx = next_section_idx if next_section_idx else len(lines)
+                lines.insert(insert_idx, f"{key} = {value}\n")
+                updated = True
+
+            if updated:
+                with open(self.ini_path, 'w') as f:
+                    f.writelines(lines)
+
+            return updated
 
         except Exception as e:
-            print(f"Error reading ScreenRes.txt: {e}")
-            return {}
+            print(f"Error writing {key} to VPinballX.ini: {e}")
+            return False
 
 
 class KeyCaptureButton(QPushButton):
@@ -637,460 +637,125 @@ class JoystickButton(QPushButton):
 
 
 class DisplayConfigTab(QWidget):
-    """Tab for display configuration"""
+    """Display settings for the Raspberry Pi cabinet.
+
+    The Pi cabinet has a fixed two-screen 1080p layout (playfield on screen 0,
+    backglass on screen 1), so the only adjustable display setting is where the
+    VPinball DMD window sits over the backglass on the second screen. Also
+    exposes the VPinball render scale (AAFactor) for performance tuning.
+    """
 
     def __init__(self, config: Config):
         super().__init__()
         self.config = config
         self.vpx_manager = VPXIniManager()
-
-        # Don't initialize ScreenResManager here - we'll create it when saving
-        # with the current table_directory value to handle user changes
-        self.screenres_manager = None
-
-        self.dmd_calculator = DMDPositionCalculator()
-        self.screens = self._detect_screens()
         self.init_ui()
-
-    def _detect_screens(self):
-        """Detect available screens and their properties"""
-        app = QApplication.instance()
-        screens = []
-        for i, screen in enumerate(app.screens()):
-            geometry = screen.geometry()
-            screens.append({
-                'index': i,
-                'name': screen.name(),
-                'width': geometry.width(),
-                'height': geometry.height(),
-                'x': geometry.x(),
-                'y': geometry.y()
-            })
-        return screens
-
-    def _get_smart_default_screen(self, display_type: str) -> int:
-        """Get smart default screen assignment based on available screens
-
-        Logic:
-        - 1 screen: playfield only on primary (screen 0)
-        - 2 screens: playfield on primary (0), backglass on secondary (1)
-        - 3 screens: playfield (0), backglass (1), dmd (2)
-        - 4+ screens: playfield (0), backglass (1), dmd (2), topper (3)
-
-        fulldmd uses same screen as dmd if available
-        """
-        num_screens = len(self.screens)
-
-        # Priority order for screen assignment
-        display_priority = {
-            'playfield': 0,      # Always screen 0 (primary)
-            'backglass': 1,      # Screen 1 if available
-            'dmd': 2,            # Screen 2 if available
-            'fulldmd': 2,        # Same as dmd
-            'topper': 3          # Screen 3 if available
-        }
-
-        default_screen = display_priority.get(display_type, 0)
-
-        # If the default screen doesn't exist, fall back to screen 0
-        if default_screen >= num_screens:
-            return 0
-
-        return default_screen
 
     def init_ui(self):
         layout = QVBoxLayout()
 
-        # Scroll area for display configs
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll_widget = QWidget()
-        scroll_layout = QVBoxLayout()
+        # --- DMD position over the backglass (second screen) ---
+        dmd_group = QGroupBox("DMD Position (Backglass Screen)")
+        dmd_layout = QFormLayout()
 
-        # Create config groups for each display type
-        self.display_widgets = {}
+        # Prefer the live VPinballX.ini DMD window values, fall back to the
+        # PinballUX config, then to sensible defaults.
+        vpx_dmd = self.vpx_manager.read_display_config('dmd')
+        current = self.config.displays.dmd
 
-        display_types = [
-            ('playfield', 'Playfield Display'),
-            ('backglass', 'Backglass Display'),
-            ('dmd', 'DMD Display'),
-            ('fulldmd', 'Full DMD Display'),
-            ('topper', 'Topper Display')
-        ]
+        def _initial(key, attr, default):
+            if key in vpx_dmd:
+                return vpx_dmd[key]
+            if current is not None and getattr(current, attr) is not None:
+                return getattr(current, attr)
+            return default
 
-        for display_type, display_label in display_types:
-            group = self.create_display_group(display_type, display_label)
-            scroll_layout.addWidget(group)
+        self.dmd_x = QSpinBox()
+        self.dmd_x.setRange(-10000, 10000)
+        self.dmd_x.setValue(_initial('x', 'x', 2368))
+        dmd_layout.addRow("X Position:", self.dmd_x)
 
-        scroll_widget.setLayout(scroll_layout)
-        scroll.setWidget(scroll_widget)
-        layout.addWidget(scroll)
+        self.dmd_y = QSpinBox()
+        self.dmd_y.setRange(-10000, 10000)
+        self.dmd_y.setValue(_initial('y', 'y', 824))
+        dmd_layout.addRow("Y Position:", self.dmd_y)
 
+        self.dmd_width = QSpinBox()
+        self.dmd_width.setRange(0, 10000)
+        self.dmd_width.setValue(_initial('width', 'width', 1024))
+        dmd_layout.addRow("Width:", self.dmd_width)
+
+        self.dmd_height = QSpinBox()
+        self.dmd_height.setRange(0, 10000)
+        self.dmd_height.setValue(_initial('height', 'height', 256))
+        dmd_layout.addRow("Height:", self.dmd_height)
+
+        dmd_info = QLabel(
+            "Position the VPinball DMD window over the backglass on the second "
+            "screen.\nX/Y are absolute desktop coordinates; the second screen "
+            "starts at X = 1920."
+        )
+        dmd_info.setStyleSheet("color: #666; font-size: 11px;")
+        dmd_info.setWordWrap(True)
+        dmd_layout.addRow(dmd_info)
+
+        dmd_group.setLayout(dmd_layout)
+        layout.addWidget(dmd_group)
+
+        # --- Render performance ---
+        perf_group = QGroupBox("Performance")
+        perf_layout = QFormLayout()
+
+        self.aa_factor = QDoubleSpinBox()
+        self.aa_factor.setRange(0.10, 2.00)
+        self.aa_factor.setSingleStep(0.05)
+        self.aa_factor.setDecimals(2)
+        self.aa_factor.setValue(self.vpx_manager.read_aa_factor())
+        perf_layout.addRow("Screen Texture Scaling (AAFactor):", self.aa_factor)
+
+        perf_info = QLabel(
+            "VPinball render scale. Lower values improve performance, higher "
+            "values look sharper. Default 0.85."
+        )
+        perf_info.setStyleSheet("color: #666; font-size: 11px;")
+        perf_info.setWordWrap(True)
+        perf_layout.addRow(perf_info)
+
+        perf_group.setLayout(perf_layout)
+        layout.addWidget(perf_group)
+
+        layout.addStretch()
         self.setLayout(layout)
 
-    def create_display_group(self, display_type: str, label: str) -> QGroupBox:
-        """Create a configuration group for a display"""
-        main_group = QGroupBox(label)
-        main_layout = QVBoxLayout()
-
-        # PinballUX Configuration
-        ux_group = QGroupBox("PinballUX Settings")
-        ux_layout = QFormLayout()
-
-        # Get current config
-        current = getattr(self.config.displays, display_type)
-
-        # Enabled checkbox with smart defaults
-        enabled = QCheckBox()
-        if current is not None:
-            # Use existing config
-            enabled.setChecked(current.enabled)
-        else:
-            # Smart defaults: only playfield is enabled by default
-            enabled.setChecked(display_type == 'playfield')
-        ux_layout.addRow("Enabled:", enabled)
-
-        # Screen selection dropdown
-        screen_combo = QComboBox()
-        for screen in self.screens:
-            screen_combo.addItem(
-                f"Screen {screen['index']}: {screen['name']} ({screen['width']}x{screen['height']})",
-                screen['index']
-            )
-
-        # Set current screen with smart defaults
-        if current:
-            # Use existing config
-            for i in range(screen_combo.count()):
-                if screen_combo.itemData(i) == current.screen_number:
-                    screen_combo.setCurrentIndex(i)
-                    break
-        else:
-            # Smart screen assignment based on number of available screens
-            default_screen = self._get_smart_default_screen(display_type)
-            for i in range(screen_combo.count()):
-                if screen_combo.itemData(i) == default_screen:
-                    screen_combo.setCurrentIndex(i)
-                    break
-        ux_layout.addRow("Screen:", screen_combo)
-
-        # Rotation
-        rotation = QComboBox()
-        rotation.addItems(["0°", "90°", "180°", "270°"])
-        if current:
-            rotation.setCurrentIndex([0, 90, 180, 270].index(current.rotation) if current.rotation in [0, 90, 180, 270] else 0)
-        else:
-            rotation.setCurrentIndex(0)  # Default to 0° rotation
-        ux_layout.addRow("Rotation:", rotation)
-
-        # DMD mode (only for DMD displays)
-        dmd_mode = None
-        if 'dmd' in display_type:
-            dmd_mode = QComboBox()
-            dmd_mode.addItems(["Full Screen", "Native Size"])
-            if current:
-                dmd_mode.setCurrentIndex(0 if current.dmd_mode == "full" else 1)
-            ux_layout.addRow("DMD Mode:", dmd_mode)
-
-        ux_group.setLayout(ux_layout)
-        main_layout.addWidget(ux_group)
-
-        # VPinballX Configuration
-        vpx_group = QGroupBox("VPinballX.ini Settings (Auto-populated from Screen)")
-        vpx_layout = QFormLayout()
-
-        # Load VPX config from VPinballX.ini
-        vpx_config = self.vpx_manager.read_display_config(display_type)
-
-        # Check if PinballUX config has manual overrides - these take precedence
-        # This preserves values set by Auto-Position DMD or manual configuration
-        if current:
-            if current.x is not None:
-                vpx_config['x'] = current.x
-            if current.y is not None:
-                vpx_config['y'] = current.y
-            if current.width is not None:
-                vpx_config['width'] = current.width
-            if current.height is not None:
-                vpx_config['height'] = current.height
-
-        # Position X (auto-populated from screen, but adjustable)
-        vpx_x = QSpinBox()
-        vpx_x.setRange(-10000, 10000)
-        vpx_x.setValue(vpx_config.get('x', 0))
-        vpx_layout.addRow("X Position:", vpx_x)
-
-        # Position Y (auto-populated from screen, but adjustable)
-        vpx_y = QSpinBox()
-        vpx_y.setRange(-10000, 10000)
-        vpx_y.setValue(vpx_config.get('y', 0))
-        vpx_layout.addRow("Y Position:", vpx_y)
-
-        # Width (editable for DMD displays, read-only for playfield/backglass)
-        vpx_width = QSpinBox()
-        vpx_width.setRange(0, 10000)
-        vpx_width.setValue(vpx_config.get('width', 1920))
-        # Only disable for playfield and backglass (they use full screen)
-        if display_type in ['playfield', 'backglass']:
-            vpx_width.setEnabled(False)
-        vpx_layout.addRow("Width:", vpx_width)
-
-        # Height (editable for DMD displays, read-only for playfield/backglass)
-        vpx_height = QSpinBox()
-        vpx_height.setRange(0, 10000)
-        vpx_height.setValue(vpx_config.get('height', 1080))
-        # Only disable for playfield and backglass (they use full screen)
-        if display_type in ['playfield', 'backglass']:
-            vpx_height.setEnabled(False)
-        vpx_layout.addRow("Height:", vpx_height)
-
-        # VPX Rotation (for displays that support it)
-        vpx_rotation = None
-        if display_type in ['backglass', 'dmd', 'fulldmd', 'b2sdmd']:
-            vpx_rotation = QComboBox()
-            vpx_rotation.addItems(["0°", "90°", "180°", "270°"])
-            vpx_rot_value = vpx_config.get('rotation', 0)
-            if isinstance(vpx_rot_value, int) and vpx_rot_value in [0, 90, 180, 270]:
-                vpx_rotation.setCurrentIndex([0, 90, 180, 270].index(vpx_rot_value))
-            vpx_layout.addRow("VPX Rotation:", vpx_rotation)
-
-        # Auto-Position button for DMD displays
-        if 'dmd' in display_type:
-            auto_pos_layout = QHBoxLayout()
-            auto_pos_btn = QPushButton("🎯 Auto-Position DMD")
-            auto_pos_btn.setToolTip("Automatically center DMD in lower part of screen")
-            auto_pos_btn.clicked.connect(
-                lambda checked=False, dt=display_type: self._auto_position_dmd(dt)
-            )
-            auto_pos_layout.addWidget(auto_pos_btn)
-            auto_pos_layout.addStretch()
-            vpx_layout.addRow("", auto_pos_layout)
-
-        vpx_group.setLayout(vpx_layout)
-        main_layout.addWidget(vpx_group)
-
-        main_group.setLayout(main_layout)
-
-        # Store widgets for later retrieval
-        self.display_widgets[display_type] = {
-            'enabled': enabled,
-            'screen_combo': screen_combo,
-            'rotation': rotation,
-            'dmd_mode': dmd_mode,
-            'vpx_x': vpx_x,
-            'vpx_y': vpx_y,
-            'vpx_width': vpx_width,
-            'vpx_height': vpx_height,
-            'vpx_rotation': vpx_rotation
-        }
-
-        # Connect screen selection to auto-populate VPX fields
-        screen_combo.currentIndexChanged.connect(
-            lambda: self._update_vpx_fields(display_type)
-        )
-
-        # Always populate width/height from selected screen (they're read-only)
-        self._update_vpx_fields(display_type)
-
-        return main_group
-
-    def _update_vpx_fields(self, display_type: str):
-        """Auto-populate VPX position/size fields based on selected screen"""
-        widgets = self.display_widgets.get(display_type)
-        if not widgets:
-            return
-
-        screen_idx = widgets['screen_combo'].currentData()
-        if screen_idx is None:
-            return
-
-        # Find screen by matching index (not array position)
-        screen = None
-        for s in self.screens:
-            if s['index'] == screen_idx:
-                screen = s
-                break
-
-        if screen is None:
-            return
-
-        # For regular DMD and B2SDMD, don't auto-populate any values
-        # These displays use manual configuration or Auto-Position button
-        # Updating x/y here would overwrite auto-positioned values
-        if display_type in ['dmd', 'b2sdmd']:
-            return
-
-        # Update all VPX position and size fields for other displays
-        widgets['vpx_x'].setValue(screen['x'])
-        widgets['vpx_y'].setValue(screen['y'])
-        widgets['vpx_width'].setValue(screen['width'])
-        widgets['vpx_height'].setValue(screen['height'])
-
-    def _auto_position_dmd(self, display_type: str):
-        """Automatically position DMD - full screen for fulldmd, windowed for dmd/b2sdmd"""
-        widgets = self.display_widgets.get(display_type)
-        if not widgets:
-            return
-
-        # Get selected screen info
-        screen_idx = widgets['screen_combo'].currentData()
-        if screen_idx is None:
-            QMessageBox.warning(
-                self,
-                "No Screen Selected",
-                "Please select a screen first before auto-positioning the DMD."
-            )
-            return
-
-        # Find screen by matching index (not array position)
-        screen = None
-        for s in self.screens:
-            if s['index'] == screen_idx:
-                screen = s
-                break
-
-        if screen is None:
-            QMessageBox.warning(
-                self,
-                "Screen Not Found",
-                f"Screen {screen_idx} not found in detected screens."
-            )
-            return
-
-        # FullDMD uses entire screen
-        if display_type == 'fulldmd':
-            widgets['vpx_x'].setValue(screen['x'])
-            widgets['vpx_y'].setValue(screen['y'])
-            widgets['vpx_width'].setValue(screen['width'])
-            widgets['vpx_height'].setValue(screen['height'])
-
-            QMessageBox.information(
-                self,
-                "FullDMD Auto-Positioned",
-                f"FullDMD set to full screen:\n"
-                f"  Position: ({screen['x']}, {screen['y']})\n"
-                f"  Size: {screen['width']}x{screen['height']}\n"
-                f"  Using entire screen\n\n"
-                f"Click 'Save Configuration' to apply changes."
-            )
-            return
-
-        # For regular DMD and B2SDMD, calculate windowed position
-        dmd_type_map = {
-            'dmd': 'classic',      # PinMAME DMD - classic 128x32 ratio
-            'b2sdmd': 'classic',   # B2S DMD - classic ratio
-        }
-
-        dmd_aspect = dmd_type_map.get(display_type, 'classic')
-
-        # Get cabinet configs which include optimal positioning
-        cabinet_configs = self.dmd_calculator.calculate_for_cabinet_screens(
-            screen['width'],
-            screen['height'],
-            dmd_type=dmd_aspect
-        )
-
-        # Get config for this display type
-        dmd_config = cabinet_configs.get(display_type)
-        if not dmd_config:
-            QMessageBox.warning(
-                self,
-                "Calculation Error",
-                f"Could not calculate position for {display_type}"
-            )
-            return
-
-        # Update the widgets with calculated values
-        # Add screen offset to the calculated position
-        widgets['vpx_x'].setValue(screen['x'] + dmd_config.x)
-        widgets['vpx_y'].setValue(screen['y'] + dmd_config.y)
-        widgets['vpx_width'].setValue(dmd_config.width)
-        widgets['vpx_height'].setValue(dmd_config.height)
-
-        # Show confirmation
-        QMessageBox.information(
-            self,
-            "DMD Auto-Positioned",
-            f"DMD positioned at:\n"
-            f"  Position: ({dmd_config.x}, {dmd_config.y}) on screen\n"
-            f"  Size: {dmd_config.width}x{dmd_config.height}\n"
-            f"  Centered horizontally in lower portion of screen\n\n"
-            f"Click 'Save Configuration' to apply changes."
-        )
-
     def save_config(self):
-        """Save display configuration to both PinballUX and VPinballX.ini"""
-        # Get the current table directory from VPX config (it might have been changed)
-        table_dir = self.config.vpx.table_directory
-        if table_dir:
-            screenres_path = Path(table_dir) / "ScreenRes.txt"
-            self.screenres_manager = ScreenResManager(screenres_path)
-        else:
-            # Fall back to default if no table directory is set
-            self.screenres_manager = ScreenResManager()
+        """Save DMD position and render scale to PinballUX config + VPinballX.ini"""
+        x = self.dmd_x.value()
+        y = self.dmd_y.value()
+        width = self.dmd_width.value()
+        height = self.dmd_height.value()
 
-        # Collect display configurations for ScreenRes.txt
-        screenres_configs = {}
+        # Update the PinballUX DMD media window so the frontend preview matches
+        # where VPinball will draw the DMD during play (second screen / screen 1).
+        self.config.displays.dmd = MonitorConfig(
+            name="Dmd",
+            screen_number=1,
+            rotation=0,
+            enabled=True,
+            x=x,
+            y=y,
+            width=width,
+            height=height,
+            dmd_mode="full"
+        )
 
-        for display_type, widgets in self.display_widgets.items():
-            # Save PinballUX configuration
-            enabled = widgets['enabled'].isChecked()
-            screen_number = widgets['screen_combo'].currentData()
-            rotation_idx = widgets['rotation'].currentIndex()
-            rotation = [0, 90, 180, 270][rotation_idx]
+        # Write the DMD window position to VPinballX.ini. Mirror to the B2S DMD
+        # so tables using either the PinMAME or B2S DMD land in the same spot.
+        dmd_config = {'x': x, 'y': y, 'width': width, 'height': height}
+        self.vpx_manager.write_display_config('dmd', dmd_config)
+        self.vpx_manager.write_display_config('b2sdmd', dmd_config)
 
-            dmd_mode = "full"
-            if widgets['dmd_mode']:
-                dmd_mode = "full" if widgets['dmd_mode'].currentIndex() == 0 else "native"
-
-            # Get VPX position values from widgets
-            vpx_x = widgets['vpx_x'].value()
-            vpx_y = widgets['vpx_y'].value()
-            vpx_width = widgets['vpx_width'].value()
-            vpx_height = widgets['vpx_height'].value()
-
-            if enabled:
-                monitor_config = MonitorConfig(
-                    name=display_type.capitalize(),
-                    screen_number=screen_number,
-                    rotation=rotation,
-                    enabled=enabled,
-                    x=vpx_x,
-                    y=vpx_y,
-                    width=vpx_width,
-                    height=vpx_height,
-                    dmd_mode=dmd_mode
-                )
-                setattr(self.config.displays, display_type, monitor_config)
-            else:
-                setattr(self.config.displays, display_type, None)
-
-            # Save VPinballX.ini configuration (use same values from widgets)
-            vpx_config = {
-                'x': vpx_x,
-                'y': vpx_y,
-                'width': vpx_width,
-                'height': vpx_height,
-                'screen_number': screen_number
-            }
-
-            # Add rotation if supported
-            if widgets['vpx_rotation']:
-                vpx_rot_idx = widgets['vpx_rotation'].currentIndex()
-                vpx_config['rotation'] = [0, 90, 180, 270][vpx_rot_idx]
-
-            # Write to VPinballX.ini
-            self.vpx_manager.write_display_config(display_type, vpx_config)
-
-            # For fulldmd, also write to b2sdmd (some tables use B2S DMD instead of FlexDMD)
-            if display_type == 'fulldmd':
-                self.vpx_manager.write_display_config('b2sdmd', vpx_config)
-
-            # Store for ScreenRes.txt
-            screenres_configs[display_type] = vpx_config
-
-        # Write ScreenRes.txt for B2S Server
-        self.screenres_manager.write_screen_config(screenres_configs, self.screens)
+        # Write the render scale (AAFactor)
+        self.vpx_manager.write_aa_factor(self.aa_factor.value())
 
 
 class VPinballDownloadThread(QThread):
@@ -1237,7 +902,7 @@ class VPXConfigTab(QWidget):
         url_layout = QHBoxLayout()
         url_layout.addWidget(QLabel("Download URL:"))
         self.vpinball_url = QLineEdit(
-            "https://github.com/vpinball/vpinball/releases/download/v10.8.0-2051-28dd6c3/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-x64.zip"
+            "https://github.com/vpinball/vpinball/releases/download/v10.8.0-2051-28dd6c3/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-aarch64-rpi.zip"
         )
         url_layout.addWidget(self.vpinball_url)
         download_layout.addLayout(url_layout)
@@ -1301,7 +966,7 @@ class VPXConfigTab(QWidget):
             return
 
         # Destination directory
-        dest_dir = Path(project_root) / "vpinball"
+        dest_dir = Path.home() / "VPinballX"
 
         # Confirm download
         reply = QMessageBox.question(
@@ -1335,7 +1000,7 @@ class VPXConfigTab(QWidget):
 
         if success:
             # Update executable path to the downloaded binary
-            dest_dir = Path(project_root) / "vpinball"
+            dest_dir = Path.home() / "VPinballX"
             exe_path = dest_dir / "VPinballX_GL"
             if exe_path.exists():
                 self.exe_path.setText(str(exe_path))
@@ -1377,9 +1042,35 @@ class VPXConfigTab(QWidget):
 
     def save_config(self):
         """Save VPX configuration"""
+        table_dir = self.table_dir.text()
+        media_dir = self.media_dir.text()
+
+        # Guard: a Table/Media directory set inside the ROMs folder mixes
+        # downloaded media in with the .zip ROMs and later breaks the database's
+        # stored media paths. Warn and require confirmation before saving.
+        offenders = []
+        if path_inside_roms(table_dir):
+            offenders.append(f"  • Table Directory → {table_dir}")
+        if path_inside_roms(media_dir):
+            offenders.append(f"  • Media Directory → {media_dir}")
+        if offenders:
+            reply = QMessageBox.warning(
+                self,
+                "Directory inside ROMs folder",
+                "These setting(s) point inside your ROMs folder:\n\n"
+                + "\n".join(offenders)
+                + "\n\nMedia downloaded by the Table Manager would be written "
+                "here and mixed in with your .zip ROM files. This is almost "
+                "certainly a mistake.\n\nSave anyway?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return  # abort save; let the user correct the path
+
         self.config.vpx.executable_path = self.exe_path.text()
-        self.config.vpx.table_directory = self.table_dir.text()
-        self.config.vpx.media_directory = self.media_dir.text()
+        self.config.vpx.table_directory = table_dir
+        self.config.vpx.media_directory = media_dir
 
         # Save BGSet value to VPinballX.ini
         bgset = self.mode_combo.currentData()
@@ -1776,6 +1467,9 @@ class SetupWindow(QMainWindow):
 
 
 def main():
+    # Ensure the VPinMAME roms symlink is in place before launching the UI
+    setup_vpinmame_roms_symlink()
+
     app = QApplication(sys.argv)
     window = SetupWindow()
     window.show()

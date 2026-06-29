@@ -900,6 +900,51 @@ class TableService:
 
         return result
 
+    # Valid media columns on the Table model
+    MEDIA_COLUMNS = {
+        'backglass_image', 'backglass_video', 'playfield_image', 'table_video',
+        'dmd_image', 'dmd_video', 'topper_image', 'topper_video', 'wheel_image',
+        'launch_audio', 'table_audio'
+    }
+
+    def set_table_media(self, table_id: int, column_name: str, value: Optional[str]) -> bool:
+        """Set a specific media column on a table to a given value.
+
+        Unlike assign_media_to_table, this writes the value directly (including
+        None to clear a stale reference) and does not require the file to exist.
+
+        Args:
+            table_id: Database ID of the table
+            column_name: Media column to set (must be in MEDIA_COLUMNS)
+            value: New value for the column, or None to clear it
+
+        Returns:
+            True if the column was updated, False otherwise
+        """
+        if column_name not in self.MEDIA_COLUMNS:
+            self.logger.error(f"Invalid media column: {column_name}")
+            return False
+
+        try:
+            with self.db.get_session() as session:
+                table = session.query(Table).filter(Table.id == table_id).first()
+                if not table:
+                    self.logger.error(f"Table not found with ID: {table_id}")
+                    return False
+
+                if getattr(table, column_name) == value:
+                    return False  # No change
+
+                setattr(table, column_name, value)
+                table.updated_at = datetime.utcnow()
+                session.commit()
+                self.logger.info(f"Set {column_name} = {value} for table '{table.name}'")
+                return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to set media column for table {table_id}: {e}")
+            return False
+
     def assign_media_to_table(self, table_id: int, media_path: str, media_category: str) -> bool:
         """Directly assign a media file to a specific table without fuzzy search
 

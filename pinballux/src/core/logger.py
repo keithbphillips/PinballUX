@@ -25,14 +25,17 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # Set up root logger
+    # Set up root logger. force=True removes any handlers that were added
+    # before this call (e.g. by an early logging.warning() call), so the
+    # FileHandler is always registered and the log file is actually written.
     logging.basicConfig(
+        force=True,
         level=getattr(logging, log_level.upper()),
         format=log_format,
         datefmt=date_format,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file, mode='a')
+            logging.FileHandler(log_file, mode='w')
         ]
     )
 

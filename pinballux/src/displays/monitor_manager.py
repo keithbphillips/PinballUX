@@ -33,7 +33,23 @@ class MonitorManager(QObject):
         # Available screens by index
         self.screens: List[QScreen] = []
 
+        # Whether show_displays() has been called (so late-arriving screens auto-show)
+        self._displays_requested = False
+
         self._detect_screens()
+
+        # Connect to screen-added signal so secondary monitors that come online
+        # after startup (common on Pi/labwc at boot) still get their displays.
+        app = QApplication.instance()
+        if app:
+            app.screenAdded.connect(self._on_screen_added)
+
+    def _on_screen_added(self, screen: QScreen):
+        """Called when a new monitor becomes available after startup."""
+        self.logger.info(f"Screen added: {screen.name()} — re-detecting screens")
+        self._detect_screens()
+        if self._displays_requested:
+            self.show_displays()
 
     def _detect_screens(self):
         """Detect available screens/monitors"""
@@ -56,6 +72,13 @@ class MonitorManager(QObject):
             return self.screens[screen_number]
         return None
 
+    def _find_screen_containing(self, x: int, y: int) -> Optional[QScreen]:
+        """Return the QScreen whose geometry contains the given point."""
+        for screen in self.screens:
+            if screen.geometry().contains(x, y):
+                return screen
+        return None
+
     def _resolve_monitor_geometry(self, monitor_config: MonitorConfig) -> tuple[QScreen, int, int, int, int]:
         """Resolve final geometry for a monitor configuration
 
@@ -63,25 +86,34 @@ class MonitorManager(QObject):
         Returns the target QScreen object and geometry.
         If manual overrides are set, use those. Otherwise, auto-detect from screen_number.
         """
+        # When explicit coordinates are configured, find the screen that actually
+        # occupies that position. Screen index ordering from the compositor is
+        # non-deterministic at boot vs. an established session, so trusting
+        # screen_number alone causes displays to appear on the wrong monitor.
+        if all(v is not None for v in [monitor_config.x, monitor_config.y,
+                                        monitor_config.width, monitor_config.height]):
+            screen = self._find_screen_containing(monitor_config.x, monitor_config.y)
+            if screen is None:
+                self.logger.warning(
+                    f"No screen found containing ({monitor_config.x}, {monitor_config.y}); "
+                    f"falling back to screen_number {monitor_config.screen_number}"
+                )
+                screen = self.get_screen_by_number(monitor_config.screen_number)
+            if screen is None:
+                screen = QApplication.instance().primaryScreen()
+            return (screen, monitor_config.x, monitor_config.y,
+                    monitor_config.width, monitor_config.height)
+
         screen = self.get_screen_by_number(monitor_config.screen_number)
         if not screen:
             self.logger.error(
                 f"Screen {monitor_config.screen_number} not found. "
                 f"Available screens: 0-{len(self.screens)-1}"
             )
-            # Fallback to primary screen
             screen = QApplication.instance().primaryScreen()
             return (screen, 0, 0, 1920, 1080)
 
         geometry = screen.geometry()
-
-        # Check if all manual overrides are provided
-        if all(v is not None for v in [monitor_config.x, monitor_config.y,
-                                        monitor_config.width, monitor_config.height]):
-            return (screen, monitor_config.x, monitor_config.y,
-                   monitor_config.width, monitor_config.height)
-
-        # Use screen's native geometry
         return (screen, geometry.x(), geometry.y(), geometry.width(), geometry.height())
 
     def create_display(self, display_type: str, monitor_config: MonitorConfig) -> Optional[BaseDisplay]:
@@ -120,33 +152,45 @@ class MonitorManager(QObject):
 
     def show_displays(self):
         """Show all configured display windows"""
-        # Create and show backglass display
-        if self.config.displays.backglass and self.config.displays.backglass.enabled:
-            if "backglass" not in self.displays:
-                self.create_display("backglass", self.config.displays.backglass)
-            if "backglass" in self.displays:
-                self.displays["backglass"].show()
+        self._displays_requested = True
 
-        # Create and show DMD display
-        if self.config.displays.dmd and self.config.displays.dmd.enabled:
-            if "dmd" not in self.displays:
-                self.create_display("dmd", self.config.displays.dmd)
-            if "dmd" in self.displays:
-                self.displays["dmd"].show()
+        for display_type, monitor_cfg in [
+            ("backglass", self.config.displays.backglass),
+            ("dmd", self.config.displays.dmd),
+            ("fulldmd", self.config.displays.fulldmd),
+            ("topper", self.config.displays.topper),
+        ]:
+            if not monitor_cfg or not monitor_cfg.enabled:
+                continue
 
-        # Create and show FullDMD display
-        if self.config.displays.fulldmd and self.config.displays.fulldmd.enabled:
-            if "fulldmd" not in self.displays:
-                self.create_display("fulldmd", self.config.displays.fulldmd)
-            if "fulldmd" in self.displays:
-                self.displays["fulldmd"].show()
+            # Skip if the required screen isn't available yet.
+            # When explicit coordinates are configured, use the same
+            # coordinate-based lookup that _resolve_monitor_geometry uses;
+            # the screen_number index is unreliable after a display change.
+            has_explicit_coords = all(
+                v is not None for v in [monitor_cfg.x, monitor_cfg.y,
+                                        monitor_cfg.width, monitor_cfg.height]
+            )
+            if has_explicit_coords:
+                screen_available = self._find_screen_containing(
+                    monitor_cfg.x, monitor_cfg.y) is not None
+            else:
+                screen_available = self.get_screen_by_number(
+                    monitor_cfg.screen_number) is not None
 
-        # Create and show topper display
-        if self.config.displays.topper and self.config.displays.topper.enabled:
-            if "topper" not in self.displays:
-                self.create_display("topper", self.config.displays.topper)
-            if "topper" in self.displays:
-                self.displays["topper"].show()
+            if not screen_available:
+                self.logger.warning(
+                    f"Screen for {display_type} not yet available "
+                    f"(coords={monitor_cfg.x},{monitor_cfg.y} / "
+                    f"screen_number={monitor_cfg.screen_number}) "
+                    f"— will retry when screen connects"
+                )
+                continue
+
+            if display_type not in self.displays:
+                self.create_display(display_type, monitor_cfg)
+            if display_type in self.displays:
+                self.displays[display_type].show()
 
     def close_displays(self):
         """Close all display windows"""

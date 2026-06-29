@@ -190,7 +190,16 @@ class VPXLauncher(QObject):
         return None
 
     def _build_command_args(self, table_path: str, options: Dict[str, Any]) -> list:
-        """Build command line arguments for VPinballX_GL"""
+        """Build command line arguments for the configured launcher.
+
+        If the configured executable is a wrapper script (e.g. vpinball.sh), it
+        supplies -Play, fullscreen, the Wayland env and the texture-cache clear
+        itself, so we pass ONLY the table path. Otherwise we build the full
+        VPinballX_GL argument list directly.
+        """
+        if (self.config.vpx.executable_path or "").endswith('.sh'):
+            return [table_path]
+
         args = []
 
         # Enable true fullscreen (unless explicitly disabled) - goes first

@@ -13,7 +13,7 @@ from pathlib import Path
 
 from ..core.logger import get_logger
 from ..input.input_manager import InputManager, InputAction
-from .media_widgets import AudioPlayer
+from .media_widgets import AudioPlayer, AUDIO_OUTPUT_ENABLED
 
 logger = get_logger(__name__)
 
@@ -538,11 +538,16 @@ class WheelWidget(QWidget):
         self.background_view.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
         self.background_view.setStyleSheet("background-color: #1a1a1a; border: none;")
 
-        # Create media player for background video
+        # Create media player for background video. Only open an audio device
+        # when frontend audio is enabled (see AUDIO_OUTPUT_ENABLED); otherwise
+        # the background video plays silently and no PipeWire stream is opened.
         self.background_media_player = QMediaPlayer()
-        self.background_audio_output = QAudioOutput()
-        self.background_audio_output.setVolume(0.2)  # 20% volume for background
-        self.background_media_player.setAudioOutput(self.background_audio_output)
+        if AUDIO_OUTPUT_ENABLED:
+            self.background_audio_output = QAudioOutput()
+            self.background_audio_output.setVolume(0.2)  # 20% volume for background
+            self.background_media_player.setAudioOutput(self.background_audio_output)
+        else:
+            self.background_audio_output = None
 
         # Graphics view video item
         self.background_video_item = QGraphicsVideoItem()
@@ -605,6 +610,16 @@ class WheelWidget(QWidget):
             self.wheel_items.append(wheel_item)
 
         self.update_wheel_display(animate=False)  # No animation on initial setup
+
+        # The immediate (non-animated) layout loads the playfield background and
+        # text but never emits table_highlighted, so secondary displays (backglass,
+        # DMD) stay blank on first load until the user moves the wheel. Push the
+        # initial selection's media once, deferred so the displays/layout are ready.
+        if self.tables and 0 <= self.current_index < len(self.tables):
+            QTimer.singleShot(
+                self.media_update_delay,
+                lambda: self.table_highlighted.emit(self.tables[self.current_index])
+            )
 
     def update_wheel_display(self, animate=True):
         """Update the wheel display positions and scaling with optional animation"""
@@ -941,6 +956,24 @@ class WheelWidget(QWidget):
         self.default_background.clear()
         self.default_background_proxy.setVisible(True)
         self.default_background.setText("No Media Available")
+
+    def release_background_audio(self):
+        """Detach the background player's audio output to release the device.
+
+        Stopping playback alone keeps the QAudioOutput's stream open; detaching
+        it frees the sink so it can't pop against VPX during table play.
+        """
+        if (getattr(self, 'background_media_player', None)
+                and self.background_media_player.audioOutput() is not None):
+            self.background_media_player.stop()
+            self.background_media_player.setAudioOutput(None)
+
+    def restore_background_audio(self):
+        """Re-attach the background player's audio output."""
+        if (getattr(self, 'background_media_player', None)
+                and getattr(self, 'background_audio_output', None)
+                and self.background_media_player.audioOutput() is None):
+            self.background_media_player.setAudioOutput(self.background_audio_output)
 
     def stop_background_video(self):
         """Stop background video playback (legacy method)"""
@@ -1688,39 +1721,81 @@ class WheelMainWindow(QWidget):
         if self.monitor_manager:
             self.monitor_manager.hide_loading("backglass")
 
-        # Let launch audio play for 3 seconds before stopping it
-        # This allows the user to hear the launch sound before VPX audio takes over
-        if self.audio_player.is_playing():
-            QTimer.singleShot(3000, lambda: self._stop_launch_audio_if_playing())
-            self.logger.debug("Will stop launch audio in 3 seconds")
+        # Stop ALL frontend media before VPX takes over, then RELEASE the audio
+        # device. The frontend keeps running as a sibling process while VPX
+        # plays; calling .stop() halts playback but leaves each QAudioOutput's
+        # PipeWire stream open and idle on the sink. On the Pi 5 those idle-but-
+        # open streams still contend with VPX for the audio device and are heard
+        # as pops/crackles -- so we also detach every audio output here.
+        # (_on_table_exited reattaches them and restores media.)
+        if self.wheel_widget:
+            self.wheel_widget.stop_background_media()  # playfield/wheel background video
+        if self.table_audio_player:
+            self.table_audio_player.stop()
+        if self.nav_audio_player:
+            self.nav_audio_player.stop()
 
         if self.monitor_manager:
-            # Blank DMD screen - just black, no text
-            self.monitor_manager.update_display_content("dmd", {
-                'message': '',
-                'animation': False
-            })
+            # Stop and blank the ancillary displays (also releases their video
+            # decode + audio output streams). backglass/dmd aren't usable on
+            # this GLES build anyway, so there's nothing to keep alive.
+            for disp in ("backglass", "topper", "dmd"):
+                display = self.monitor_manager.displays.get(disp)
+                if display and hasattr(display, "clear_content"):
+                    display.clear_content()
 
-            # Optional: Also clear backglass if you want
-            # self.monitor_manager.update_display_content("backglass", {
-            #     'table_name': '',
-            #     'manufacturer': '',
-            #     'year': '',
-            #     'backglass_image': '',
-            #     'backglass_video': ''
-            # })
+        # Let launch audio play for 3 seconds so the user hears it, then stop AND
+        # release its audio device. Everything else is released immediately.
+        if self.audio_player.is_playing():
+            QTimer.singleShot(3000, self._stop_launch_audio_if_playing)
+            self.logger.debug("Will stop launch audio in 3 seconds")
+        else:
+            self.audio_player.detach_audio()
+        self._release_frontend_audio()
 
     def _stop_launch_audio_if_playing(self):
-        """Stop launch audio if still playing (called after delay)"""
-        if self.audio_player.is_playing():
-            self.audio_player.stop()
-            self.logger.debug("Stopped launch audio after delay")
+        """Stop launch audio after the delay and release its audio device."""
+        self.audio_player.detach_audio()
+        self.logger.debug("Stopped and released launch audio after delay")
+
+    def _release_frontend_audio(self):
+        """Detach every frontend audio output so the device is fully released
+        while VPX plays (see _on_table_launched). audio_player is handled
+        separately so its launch sound can finish first."""
+        for player in (self.nav_audio_player, self.table_audio_player):
+            if player:
+                player.detach_audio()
+        if self.wheel_widget:
+            self.wheel_widget.release_background_audio()
+        if self.monitor_manager:
+            for disp in ("backglass", "dmd"):
+                display = self.monitor_manager.displays.get(disp)
+                video_widget = getattr(display, "video_widget", None) if display else None
+                if video_widget:
+                    video_widget.detach_audio()
+
+    def _restore_frontend_audio(self):
+        """Re-attach every frontend audio output detached for table play."""
+        for player in (self.audio_player, self.nav_audio_player, self.table_audio_player):
+            if player:
+                player.reattach_audio()
+        if self.wheel_widget:
+            self.wheel_widget.restore_background_audio()
+        if self.monitor_manager:
+            for disp in ("backglass", "dmd"):
+                display = self.monitor_manager.displays.get(disp)
+                video_widget = getattr(display, "video_widget", None) if display else None
+                if video_widget:
+                    video_widget.reattach_audio()
 
     def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
         """Handle table exit - restore displays"""
         self.logger.info(f"Table exited, restoring displays")
         self.loading_popup.hide_loading()
 
+        # Re-attach all frontend audio outputs (released in _on_table_launched)
+        # BEFORE restoring content, so restored videos/audio have a working sink.
+        self._restore_frontend_audio()
 
         # Restart input polling for frontend navigation
         if self.input_manager:

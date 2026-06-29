@@ -47,21 +47,25 @@ class BaseDisplay(QWidget):
         """Handle show event - move window to target screen"""
         super().showEvent(event)
 
-        # Move to target screen after the window is shown
         if self.target_screen:
-            # Get the screen geometry
-            screen_geom = self.target_screen.geometry()
+            cfg = self.monitor_config
+            has_explicit = all(v is not None for v in [cfg.x, cfg.y, cfg.width, cfg.height])
+
+            if has_explicit:
+                # Use the configured absolute coordinates.  This preserves small
+                # sub-screen windows (e.g. the DMD overlay at 1024×256) instead
+                # of expanding them to fill the whole screen.
+                x, y, w, h = cfg.x, cfg.y, cfg.width, cfg.height
+            else:
+                geom = self.target_screen.geometry()
+                x, y, w, h = geom.x(), geom.y(), geom.width(), geom.height()
 
             self.logger.info(
-                f"Moving {self.monitor_config.name} to screen at "
-                f"({screen_geom.x()}, {screen_geom.y()}) {screen_geom.width()}x{screen_geom.height()}"
+                f"Moving {cfg.name} to ({x}, {y}) {w}x{h}"
             )
+            self.move(x, y)
+            self.resize(w, h)
 
-            # Move window to the target screen's position
-            self.move(screen_geom.x(), screen_geom.y())
-            self.resize(screen_geom.width(), screen_geom.height())
-
-            # Force window to be on correct screen via windowHandle if available
             if self.windowHandle():
                 self.windowHandle().setScreen(self.target_screen)
 

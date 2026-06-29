@@ -1,5 +1,0 @@
-#!/bin/bash
-# PinballUX Table Manager wrapper script
-
-cd /opt/pinballux
-exec python3 table_manager.py "$@"

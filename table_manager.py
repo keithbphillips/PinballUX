@@ -124,13 +124,13 @@ def match_file_to_table(filename: str, table) -> float:
         return direct_score
 
     # Check if filename is a prefix/subset of table name (for variants like "Premium", "LE", etc.)
-    # e.g., "Metallica" matches "Metallica Premium Monsters"
+    # e.g., a short base title matches a longer "<base> <edition>" table name
     if filename_title.lower() in table_title.lower():
         # Boost the score if it's a prefix match (filename starts the table name)
         if table_title.lower().startswith(filename_title.lower()):
             # Prefix match is very strong, but require minimum length
-            # "Metallica" matching "Metallica Premium" - good
-            # "A" matching "Attack from Mars" - too short
+            # a 4+ char base title matching "<base> <edition>" - good
+            # a 1-char title - too short, too many false positives
             if len(filename_title) >= 4:
                 return 0.95  # High score for prefix matches with decent length
             else:
@@ -141,7 +141,7 @@ def match_file_to_table(filename: str, table) -> float:
             return direct_score
 
     # Also check the reverse: if table name is in filename (for manual searches)
-    # e.g., table_title="Addams" matches filename_title="The Addams Family"
+    # e.g., a short search term matches a longer "The <term> ..." filename
     if table_title.lower() in filename_title.lower():
         # Require minimum search term length to avoid too many false positives
         if len(table_title) >= 4:
@@ -1824,6 +1824,15 @@ class MainWindow(QMainWindow):
         self.refresh_cache_btn.setToolTip("Update the media file listing from FTP (recommended weekly)")
         button_layout.addWidget(self.refresh_cache_btn)
 
+        self.refresh_disk_btn = QPushButton("Refresh Media from Disk")
+        self.refresh_disk_btn.clicked.connect(self.refresh_table_media_from_disk)
+        self.refresh_disk_btn.setEnabled(False)
+        self.refresh_disk_btn.setToolTip(
+            "Re-scan the media directory for the selected table and sync the database:\n"
+            "clears references to deleted files and picks up files present on disk"
+        )
+        button_layout.addWidget(self.refresh_disk_btn)
+
         table_main_layout.addLayout(button_layout)
 
         table_group.setLayout(table_main_layout)
@@ -2009,6 +2018,90 @@ class MainWindow(QMainWindow):
         else:
             self.log(f"⚠ Failed to reload table '{table_name}' (ID: {table_id})")
 
+    def refresh_table_media_from_disk(self):
+        """Sync the selected table's media fields with what's actually on disk.
+
+        For each media field:
+          - If the stored file no longer exists, scan the media directory for a
+            matching file (named after the table) and assign it, or clear the
+            field if nothing is found.
+          - If the field is empty, scan for a matching file and assign it.
+          - If the field points to an existing file, leave it untouched.
+        """
+        if not self.selected_table:
+            QMessageBox.warning(self, "No Table Selected", "Please select a table first.")
+            return
+
+        # Reload from DB so we work against current values
+        self.reload_selected_table()
+        table = self.selected_table
+
+        # Determine media base path
+        if self.config and self.config.vpx.media_directory:
+            base_media_path = Path(self.config.vpx.media_directory)
+        else:
+            base_media_path = Path("/opt/pinballux/data/media")
+
+        image_exts = ['.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.tiff', '.tif']
+        video_exts = ['.mp4', '.avi', '.f4v', '.mkv', '.mov', '.wmv', '.flv', '.webm']
+        audio_exts = ['.mp3', '.wav', '.ogg', '.flac', '.aac', '.m4a']
+
+        # (db_column, [search dirs relative to base], extensions)
+        media_fields = [
+            ('backglass_image', ['images/backglass'], image_exts),
+            ('backglass_video', ['videos/backglass'], video_exts),
+            ('playfield_image', ['images/table'], image_exts),
+            ('table_video', ['videos/table'], video_exts),
+            ('dmd_image', ['images/dmd', 'images/real_dmd'], image_exts),
+            ('dmd_video', ['videos/dmd', 'videos/fulldmd', 'videos/real_dmd', 'videos/real_dmd_color'], video_exts),
+            ('topper_image', ['images/topper'], image_exts),
+            ('topper_video', ['videos/topper'], video_exts),
+            ('wheel_image', ['images/wheel'], image_exts),
+            ('launch_audio', ['audio/launch'], audio_exts),
+            ('table_audio', ['audio/table'], audio_exts),
+        ]
+
+        def find_on_disk(dirs, exts):
+            for d in dirs:
+                for ext in exts:
+                    candidate = base_media_path / d / f"{table.name}{ext}"
+                    if candidate.exists():
+                        return candidate
+            return None
+
+        self.log(f"Refreshing media from disk for '{table.name}'...")
+        assigned = 0
+        cleared = 0
+        kept = 0
+
+        for column, dirs, exts in media_fields:
+            current = getattr(table, column)
+
+            # Keep valid existing references untouched
+            if current and Path(current).exists():
+                kept += 1
+                continue
+
+            disk_path = find_on_disk(dirs, exts)
+
+            if disk_path:
+                if str(disk_path) != current:
+                    if self.table_service.set_table_media(table.id, column, str(disk_path)):
+                        self.log(f"  ✓ {column}: {disk_path.name}")
+                        assigned += 1
+            elif current:
+                # Stored file is gone and nothing else matches → clear it
+                if self.table_service.set_table_media(table.id, column, None):
+                    self.log(f"  ✗ {column}: cleared (file missing)")
+                    cleared += 1
+
+        # Reload to refresh the existing media tree with synced values
+        self.reload_selected_table()
+
+        summary = f"Assigned: {assigned}, Cleared: {cleared}, Unchanged: {kept}"
+        self.log(f"✓ Media refresh complete — {summary}")
+        QMessageBox.information(self, "Media Refresh Complete", summary)
+
     def show_table_selector(self):
         """Show the table selector dialog"""
         all_tables = self.table_service.get_all_tables()
@@ -2022,6 +2115,7 @@ class MainWindow(QMainWindow):
             self.selected_table_label.setText(self.selected_table.name)
             self.download_btn.setEnabled(True)
             self.import_pack_btn.setEnabled(True)
+            self.refresh_disk_btn.setEnabled(True)
             self.log(f"Selected table: {self.selected_table.name}")
 
             # Clear the downloaded files from previous table

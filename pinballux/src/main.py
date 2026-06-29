@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QSettings, QtMsgType, qInstallMessageHandler
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QCursor
 
 # Add the pinballux directory to the Python path to fix imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -109,6 +109,9 @@ def main():
     app.setApplicationName("PinballUX")
     app.setApplicationVersion("0.1.0")
     app.setOrganizationName("PinballUX")
+
+    # Hide the mouse cursor across the whole UI (cabinet has no pointer use)
+    app.setOverrideCursor(QCursor(Qt.CursorShape.BlankCursor))
 
     # Set up logging
     setup_logging()
