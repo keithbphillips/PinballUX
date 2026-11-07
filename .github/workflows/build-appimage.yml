@@ -5,6 +5,11 @@ on:
     types: [created]
   workflow_dispatch:
 
+# The default GITHUB_TOKEN in this repo is read-only; attaching files to a
+# release needs write access to repository contents.
+permissions:
+  contents: write
+
 jobs:
   build:
     # Ubuntu 22.04 ships glibc 2.35, compatible with most distros released since 2022
