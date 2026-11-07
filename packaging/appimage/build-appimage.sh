@@ -13,7 +13,9 @@ echo "==> Building PinballUX $VERSION AppImage ($ARCH)"
 APPIMAGETOOL="$SCRIPT_DIR/appimagetool-${ARCH}.AppImage"
 if [ ! -f "$APPIMAGETOOL" ]; then
     echo "==> Downloading appimagetool..."
-    wget -q "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-${ARCH}.AppImage" \
+    # Current appimagetool (AppImageKit is unmaintained): its static type-2 runtime does not
+    # need libfuse2, which Ubuntu 22.04+ and many other distros no longer install by default.
+    wget -q "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage" \
         -O "$APPIMAGETOOL"
     chmod +x "$APPIMAGETOOL"
 fi
