@@ -8,6 +8,7 @@ from PyQt6.QtGui import QPixmap, QFont, QColor, QPalette, QLinearGradient
 
 from ..core.config import MonitorConfig
 from .base_display import BaseDisplay
+from ..ui.media_widgets import VideoWidget
 
 
 class TopperDisplay(BaseDisplay):
@@ -49,6 +50,12 @@ class TopperDisplay(BaseDisplay):
         self.effect_label.setStyleSheet("background-color: black; color: white;")
         layout.addWidget(self.effect_label, 1)
 
+        # Topper video (looped, muted - table audio comes from the wheel/backglass)
+        self.video_widget = VideoWidget(self)
+        self.video_widget.playback_finished.connect(self._on_video_finished)
+        self.video_widget.hide()
+        layout.addWidget(self.video_widget, 1)
+
         # Optional status bar
         self.status_layout = QHBoxLayout()
         self.status_layout.setContentsMargins(10, 5, 10, 5)
@@ -78,17 +85,51 @@ class TopperDisplay(BaseDisplay):
         effect = content_data.get('effect', 'idle')
         intensity = content_data.get('intensity', 0.5)
         topper_image = content_data.get('topper_image', '')
+        topper_video = content_data.get('topper_video', '')
 
         # Update table info
         self.table_name_label.setText(table_name)
         self.current_table = content_data
 
+        # Prefer video, then image, then the built-in effect
+        if topper_video and self.video_widget.load_video(topper_video):
+            self.effect_timer.stop()
+            self.color_cycle_timer.stop()
+            self.effect_label.hide()
+            self._set_status_visible(False)
+            self.video_widget.show()
+            self.video_widget.play()
+            self.video_widget.set_muted(True)
+            return
+
+        self._stop_video()
+        self.effect_label.show()
+        if topper_image:
+            self.effect_timer.stop()
+            self.color_cycle_timer.stop()
+            self._set_status_visible(False)
+            self.effect_label.setStyleSheet("background-color: black;")
+            self.show_image(topper_image, self.effect_label)
+            return
+
         # Update effect
+        self._set_status_visible(True)
         self.set_effect(effect, intensity)
 
-        # Update topper image if provided
-        if topper_image:
-            self.show_image(topper_image, self.effect_label)
+    def _set_status_visible(self, visible: bool):
+        self.table_name_label.setVisible(visible)
+        self.effect_status_label.setVisible(visible)
+
+    def _stop_video(self):
+        if self.video_widget.isVisible() or self.video_widget.current_video_path:
+            self.video_widget.clear_video()
+        self.video_widget.hide()
+
+    def _on_video_finished(self):
+        """Loop the topper video"""
+        if self.video_widget.isVisible():
+            self.video_widget.set_position(0)
+            self.video_widget.play()
 
     def set_effect(self, effect_name: str, intensity: float = 0.5):
         """Set the current topper effect"""
@@ -248,5 +289,8 @@ class TopperDisplay(BaseDisplay):
         super().clear_content()
         self.effect_timer.stop()
         self.color_cycle_timer.stop()
+        self._stop_video()
+        self.effect_label.show()
+        self._set_status_visible(True)
         self._show_idle_effect()
         self.current_table = None

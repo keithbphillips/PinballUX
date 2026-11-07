@@ -148,6 +148,11 @@ class MonitorManager(QObject):
             if "topper" in self.displays:
                 self.displays["topper"].show()
 
+        # Smaller windows sharing a screen with the backglass must stay in front of it
+        for display_type in ("topper", "fulldmd", "dmd"):
+            if display_type in self.displays:
+                self.displays[display_type].raise_()
+
     def close_displays(self):
         """Close all display windows"""
         for display_type, display in self.displays.items():

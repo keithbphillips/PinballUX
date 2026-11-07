@@ -201,6 +201,9 @@ class WheelWidget(QWidget):
         self.rotation_angle = 0  # 0, 90, 180, 270 degrees
         self.rotation_angles = [0, 90, 180, 270]  # Available rotation angles
         self.rotation_index = 0  # Current index in rotation_angles
+        # Rotation for preview media only, used while the wheel itself is at 0° (portrait screen
+        # rotated by the OS, landscape media packs). Set from config by WheelMainWindow.
+        self.preview_rotation = 0
 
         # Set focus policy to receive key events
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
@@ -422,6 +425,10 @@ class WheelWidget(QWidget):
 
             # Load and display the image in the default background label
             pixmap = QPixmap(image_path)
+            preview = self._active_preview_rotation()
+            if preview and not pixmap.isNull():
+                # Rotate the picture itself so fallback texts on the label stay upright
+                pixmap = pixmap.transformed(QTransform().rotate(preview), Qt.TransformationMode.SmoothTransformation)
             if not pixmap.isNull():
                 # Use scene size or widget size for scaling
                 target_size = self.background_view.size()
@@ -647,6 +654,21 @@ class WheelWidget(QWidget):
         widget_width = self.width()
         widget_height = self.height()
 
+        preview = self._active_preview_rotation()
+        if preview:
+            # Item gets the rotated (swapped) size, then is turned around the screen centre so
+            # it fills the widget after rotation
+            w, h = float(widget_width), float(widget_height)
+            iw, ih = (h, w) if preview in (90, 270) else (w, h)
+            t = QTransform()
+            t.translate(w / 2.0, h / 2.0)
+            t.rotate(preview)
+            t.translate(-iw / 2.0, -ih / 2.0)
+            self.background_video_item.setPos(0, 0)
+            self.background_video_item.setSize(QSizeF(iw, ih))
+            self.background_video_item.setTransform(t)
+            return
+
         # Video should always match the selector rotation
         video_rotation = self.rotation_angle
 
@@ -666,6 +688,13 @@ class WheelWidget(QWidget):
         self.background_video_item.setTransform(video_transform)
 
         logger.debug(f"Applied video rotation: {video_rotation}° (Selector: {self.rotation_angle}°, Screen: {widget_width}x{widget_height})")
+
+    def _active_preview_rotation(self) -> int:
+        """Preview-only rotation in effect (only while the wheel itself is not rotated)."""
+        if self.rotation_angle % 360 != 0:
+            return 0
+        pr = int(getattr(self, 'preview_rotation', 0) or 0) % 360
+        return pr if pr in (90, 180, 270) else 0
 
     def _apply_image_rotation(self):
         """Apply rotation to background image proxy for 90° and 270° rotations only"""
@@ -951,6 +980,11 @@ class WheelMainWindow(QWidget):
         self.wheel_widget.table_navigation.connect(self.on_table_navigation)
         self.wheel_widget.rotation_changed.connect(self.on_rotation_changed)
 
+        # Preview-only rotation (portrait screens rotated by the OS)
+        if self.config and self.config.displays.playfield:
+            self.wheel_widget.preview_rotation = getattr(self.config.displays.playfield, 'preview_rotation', 0) or 0
+            self.wheel_widget._apply_video_rotation()
+
         # Set rotation from config if available
         if self.config and self.config.displays.playfield:
             target_rotation = self.config.displays.playfield.rotation
@@ -1166,6 +1200,14 @@ class WheelMainWindow(QWidget):
                     'message': f"SELECTED: {table_name[:12].upper()}",
                     'animation': False
                 })
+
+            # Topper follows the selection (no-op when no topper display is configured)
+            self.monitor_manager.update_display_content("topper", {
+                'table_name': table_name,
+                'effect': 'table_selected',
+                'topper_video': table_data.get('topper_video', ''),
+                'topper_image': table_data.get('topper_image', ''),
+            })
 
     def _on_table_launched(self, table_path: str):
         """Handle table launched - show loading popup and blank other displays"""
