@@ -329,6 +329,16 @@ class WheelWidget(QWidget):
         self.wheel_canvas.set_tables(tables)
         self.update_wheel_display(animate=False)  # No animation on initial setup
 
+        # Tell the other displays (backglass, DMD, topper) about the initially selected
+        # table too - otherwise they show "Ready" until the wheel is first moved.
+        # Deferred so the window and displays are up before media starts loading.
+        if self.tables:
+            QTimer.singleShot(0, self._emit_initial_highlight)
+
+    def _emit_initial_highlight(self):
+        if self.tables and 0 <= self.current_index < len(self.tables) and not self.is_animating:
+            self.table_highlighted.emit(self.tables[self.current_index])
+
     def update_wheel_display(self, animate=True):
         """Show the current table. Without animation the wheel jumps there and media loads now;
         animated moves go through _scroll()."""
