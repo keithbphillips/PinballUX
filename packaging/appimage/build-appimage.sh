@@ -29,7 +29,7 @@ python3 -m venv "$VENV"
 source "$VENV/bin/activate"
 pip install -q --upgrade pip
 pip install -q pyinstaller pyinstaller-hooks-contrib
-pip install -q -r "$PROJECT_ROOT/requirements.txt"
+pip install -q -r "$SCRIPT_DIR/requirements.txt"
 
 # --- Generate placeholder icon if one is not already present ---
 ICON="$SCRIPT_DIR/pinballux.png"

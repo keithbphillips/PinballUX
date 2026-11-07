@@ -1,0 +1,7 @@
+# Runtime dependencies bundled into the AppImage - only what the code imports.
+# (The top-level requirements.txt also lists optional/unused packages such as
+# PyQt6-WebEngine, which would add hundreds of MB to the AppImage.)
+PyQt6>=6.4.0
+pygame>=2.1.0
+sqlalchemy>=1.4,<2.1
+olefile>=0.46
