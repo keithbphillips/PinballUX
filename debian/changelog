@@ -1,3 +1,14 @@
+pinballux (0.7.1-1) unstable; urgency=medium
+
+  * New: AppImage for any x86_64 Linux distribution (glibc 2.35+), with the
+    frontend, --setup and --table-manager in one file; no libfuse2 needed
+  * Tables and custom launchers started from a bundled build get a clean
+    environment (fixes launchers using the system python3/PyQt6)
+  * Don't create the VPinMAME roms symlink or install VPinball inside a
+    read-only AppImage mount
+
+ -- Keith Phillips <keith@example.com>  Sat, 07 Nov 2026 16:20:00 -0600
+
 pinballux (0.7.0-1) unstable; urgency=medium
 
   * Redesign the table wheel: painted arc carousel with continuous, smooth
