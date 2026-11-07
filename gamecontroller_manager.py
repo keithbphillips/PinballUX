@@ -12,6 +12,76 @@ import pygame
 class GameControllerManager:
     """Manages SDL game controller database for VPinball"""
 
+    # Which SDL game-controller button each VPinball action is mapped to in gamecontrollerdb.txt
+    ACTION_TO_SDL = {
+        'LEFT_FLIPPER': 'leftshoulder',
+        'RIGHT_FLIPPER': 'rightshoulder',
+        'START': 'start',
+        'MENU': 'a',
+        'EXIT_TABLE': 'x',
+        'PLUNGER': 'rightstick',
+        'LEFT_MAGNASAVE': 'y',
+        'RIGHT_MAGNASAVE': 'back',
+    }
+
+    # SDL_GameControllerButton enum order (SDL2). VPinball Standalone opens a device listed in
+    # gamecontrollerdb.txt as a game controller and matches its Joy* ini values against
+    # (this index + 1) - not against the raw button number of the encoder board.
+    SDL_BUTTON_INDEX = {
+        'a': 0, 'b': 1, 'x': 2, 'y': 3, 'back': 4, 'guide': 5, 'start': 6,
+        'leftstick': 7, 'rightstick': 8, 'leftshoulder': 9, 'rightshoulder': 10,
+        'dpup': 11, 'dpdown': 12, 'dpleft': 13, 'dpright': 14,
+    }
+
+    # VPinballX.ini [Player] key for each action
+    ACTION_TO_VPX_KEY = {
+        'LEFT_FLIPPER': 'JoyLFlipKey',
+        'RIGHT_FLIPPER': 'JoyRFlipKey',
+        'PLUNGER': 'JoyPlungerKey',
+        'START': 'JoyStartGameKey',
+        'MENU': 'JoyAddCreditKey',
+        'LEFT_MAGNASAVE': 'JoyLMagnaSave',
+        'RIGHT_MAGNASAVE': 'JoyRMagnaSave',
+        'EXIT_TABLE': 'JoyExitGameKey',
+    }
+
+    @classmethod
+    def vpx_joy_values(cls, button_mappings: Dict[str, int]) -> Dict[str, int]:
+        """VPinballX.ini Joy* values for the given raw button mappings.
+
+        Each assigned action gets the SDL game-controller button it is mapped to (+1). If two
+        actions share one raw button, both get the controller button the first one was mapped to
+        (matching generate_mapping_string). Unassigned actions get 0 so VPX defaults can't collide.
+        """
+        values = {key: 0 for key in cls.ACTION_TO_VPX_KEY.values()}
+        raw_to_sdl = {}
+        for action, sdl_name in cls.ACTION_TO_SDL.items():
+            raw = button_mappings.get(action, -1)
+            if raw is None or raw < 0:
+                continue
+            sdl_name = raw_to_sdl.setdefault(raw, sdl_name)
+            values[cls.ACTION_TO_VPX_KEY[action]] = cls.SDL_BUTTON_INDEX[sdl_name] + 1
+        return values
+
+    def read_raw_buttons(self) -> Dict[str, int]:
+        """Raw button number per action, read back from this joystick's mapping line."""
+        joy_info = self.get_joystick_info()
+        if not joy_info or not self.db_path.exists():
+            return {}
+        guid = joy_info['guid']
+        for line in self.db_path.read_text().splitlines():
+            parts = line.strip().split(',')
+            if not parts or parts[0] != guid:
+                continue
+            sdl_to_raw = {}
+            for part in parts[2:]:
+                if ':b' in part:
+                    name, _, num = part.partition(':b')
+                    if num.isdigit():
+                        sdl_to_raw[name] = int(num)
+            return {action: sdl_to_raw[sdl] for action, sdl in self.ACTION_TO_SDL.items() if sdl in sdl_to_raw}
+        return {}
+
     def __init__(self, db_path: Optional[Path] = None):
         """Initialize with optional custom database path"""
         if db_path is None:
@@ -120,18 +190,7 @@ class GameControllerManager:
         guid = joy_info['guid']
         name = joy_info['name']
 
-        # Map PinballUX actions to SDL button names based on VPinball's expectations
-        # This mapping is based on what VPinball internally expects
-        action_to_sdl = {
-            'LEFT_FLIPPER': 'leftshoulder',     # VPX maps leftshoulder to left flipper
-            'RIGHT_FLIPPER': 'rightshoulder',   # VPX maps rightshoulder to right flipper
-            'START': 'start',                    # VPX maps start to start game
-            'MENU': 'a',                         # VPX may map 'a' to add credit/menu
-            'EXIT_TABLE': 'x',                   # VPX may map 'x' to exit
-            'PLUNGER': 'rightstick',             # VPX maps rightstick to plunger/launch
-            'LEFT_MAGNASAVE': 'y',               # Additional buttons
-            'RIGHT_MAGNASAVE': 'back',           # VPX back button
-        }
+        action_to_sdl = self.ACTION_TO_SDL
 
         # Build mapping string parts
         # Track which buttons have been mapped to avoid duplicates
@@ -194,7 +253,10 @@ class GameControllerManager:
                     filtered_lines.append(line)
                 # Skip existing mapping for this GUID (we'll add updated one)
 
-            # Add the new mapping
+            # Add the new mapping (make sure the previous line is terminated, or the two
+            # mappings end up on one line and both become invalid)
+            if filtered_lines and not filtered_lines[-1].endswith("\n"):
+                filtered_lines[-1] += "\n"
             filtered_lines.append(f"{mapping_string}\n")
 
             # Write back to file
