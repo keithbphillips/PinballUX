@@ -2,7 +2,7 @@
 Database models for PinballUX table management
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Boolean, Float, Text, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
@@ -360,7 +360,7 @@ class DatabaseManager:
                     score=score,
                     completed=True
                 )
-                play_session.start_time = play_session.end_time - datetime.timedelta(seconds=duration)
+                play_session.start_time = play_session.end_time - timedelta(seconds=duration)
 
                 session.add(play_session)
 
