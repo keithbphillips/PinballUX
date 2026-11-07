@@ -496,6 +496,7 @@ class WheelWidget(QWidget):
 
         info_text = " • ".join(info_parts) if info_parts else ""
         self.table_info_label.setText(info_text)
+        self.table_info_label.setVisible(bool(info_text))  # no empty gap in the panel
 
         # Table metadata (theme, IPDB, players, author)
         metadata_parts = []
@@ -521,6 +522,7 @@ class WheelWidget(QWidget):
 
         metadata_text = " • ".join(metadata_parts)
         self.table_metadata_label.setText(metadata_text)
+        self.table_metadata_label.setVisible(bool(metadata_text))
 
     def update_table_info(self):
         """Update the table information display with media (called after delay)"""
