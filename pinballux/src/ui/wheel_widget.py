@@ -14,6 +14,7 @@ from pathlib import Path
 from ..core.logger import get_logger
 from ..input.input_manager import InputManager, InputAction
 from .media_widgets import AudioPlayer
+from .wheel_canvas import WheelCanvas
 
 logger = get_logger(__name__)
 
@@ -170,284 +171,6 @@ class LoadingPopup(QWidget):
             self.hide()
 
 
-class WheelBackground(QWidget):
-    """Futuristic semi-circular background widget with glowing neon effects"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-
-        # Animation timer for pulsing glow effect
-        self.glow_intensity = 0.0
-        self.glow_direction = 1
-        self.glow_timer = QTimer()
-        self.glow_timer.timeout.connect(self._update_glow)
-        self.glow_timer.start(50)  # Update every 50ms for smooth animation
-
-    def _update_glow(self):
-        """Update glow animation"""
-        self.glow_intensity += 0.02 * self.glow_direction
-        if self.glow_intensity >= 1.0:
-            self.glow_intensity = 1.0
-            self.glow_direction = -1
-        elif self.glow_intensity <= 0.0:
-            self.glow_intensity = 0.0
-            self.glow_direction = 1
-        self.update()
-
-    def paintEvent(self, event):
-        """Draw a futuristic wheel background with glowing neon effects - unified curved stage"""
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        width = self.width()
-        height = self.height()
-        center_x = width // 2
-
-        # Create a stage with flat bottom and curved top
-        arc_width = width  # Extend to full width of container
-
-        # Bottom line extends to bottom of screen
-        bottom_y = height
-
-        # Arc positioned very close to bottom - within 150px of bottom edge
-        arc_center_y = height - 150 if height > 300 else height * 0.85
-        arc_height = 100  # Fixed small arc height for consistent curve
-
-        # Create unified curved path
-        wheel_path = QPainterPath()
-
-        # Start at left bottom corner
-        left_x = center_x - arc_width / 2
-        right_x = center_x + arc_width / 2
-
-        # Draw the shape: left vertical line up to just below arc, arc across top, right vertical down, bottom line
-        wheel_path.moveTo(left_x, bottom_y)
-
-        # Left vertical line up to just below the arc
-        wheel_path.lineTo(left_x, arc_center_y)
-
-        # Arc across the top - smaller ellipse for gentler curve
-        arc_top = arc_center_y - arc_height
-        arc_rect = QRectF(left_x, arc_top, arc_width, arc_height * 2)
-        wheel_path.arcTo(arc_rect, 180, -180)  # From left (180°) sweep -180° clockwise to right (0°)
-
-        # Right vertical line down to bottom
-        wheel_path.lineTo(right_x, bottom_y)
-
-        # Bottom horizontal line back to start
-        wheel_path.lineTo(left_x, bottom_y)
-
-        wheel_path.closeSubpath()
-
-        # Background gradient - dark with subtle blue tint, extends to bottom
-        arc_top = arc_center_y - arc_height
-        bg_gradient = QLinearGradient(center_x, arc_top, center_x, bottom_y)
-        bg_gradient.setColorAt(0, QColor(15, 20, 35, 250))  # Dark blue-tinted top
-        bg_gradient.setColorAt(0.3, QColor(10, 15, 25, 250))  # Darker middle
-        bg_gradient.setColorAt(1, QColor(20, 25, 40, 250))  # Slightly lighter bottom
-        painter.fillPath(wheel_path, QBrush(bg_gradient))
-
-        # Draw multiple glowing neon borders for futuristic effect
-        glow_alpha = int(150 + 50 * self.glow_intensity)  # Pulsing glow
-
-        # Outer glow (widest, most transparent)
-        for i in range(3):
-            glow_width = 8 - i * 2
-            glow_alpha_layer = glow_alpha // (i + 2)
-
-            glow_gradient = QLinearGradient(0, arc_center_y, width, arc_center_y)
-            glow_gradient.setColorAt(0, QColor(0, 150, 255, glow_alpha_layer))  # Cyan
-            glow_gradient.setColorAt(0.5, QColor(100, 180, 255, glow_alpha_layer))  # Bright cyan
-            glow_gradient.setColorAt(1, QColor(180, 100, 255, glow_alpha_layer))  # Purple
-
-            glow_pen = QPen(QBrush(glow_gradient), glow_width)
-            painter.setPen(glow_pen)
-            painter.drawPath(wheel_path)
-
-        # Inner accent line (sharp, bright)
-        accent_gradient = QLinearGradient(0, arc_center_y, width, arc_center_y)
-        accent_gradient.setColorAt(0, QColor(0, 200, 255, 200))
-        accent_gradient.setColorAt(0.5, QColor(150, 220, 255, 255))
-        accent_gradient.setColorAt(1, QColor(200, 150, 255, 200))
-
-        accent_pen = QPen(QBrush(accent_gradient), 1)
-        painter.setPen(accent_pen)
-        painter.drawPath(wheel_path)
-
-        # Add inner arc for depth - slightly smaller
-        inner_width = arc_width * 0.90
-        inner_height = arc_height * 0.85
-        inner_arc_top = arc_center_y - inner_height
-        inner_arc_rect = QRectF(center_x - inner_width / 2, inner_arc_top,
-                               inner_width, inner_height * 2)
-
-        inner_path = QPainterPath()
-        inner_path.arcMoveTo(inner_arc_rect, 180)
-        inner_path.arcTo(inner_arc_rect, 180, -180)
-
-        # Subtle inner glow
-        inner_glow_gradient = QLinearGradient(center_x, inner_arc_top, center_x, arc_center_y)
-        inner_glow_gradient.setColorAt(0, QColor(50, 100, 150, 80))
-        inner_glow_gradient.setColorAt(1, QColor(50, 100, 150, 30))
-
-        inner_pen = QPen(QBrush(inner_glow_gradient), 2)
-        painter.setPen(inner_pen)
-        painter.drawPath(inner_path)
-
-        painter.end()
-
-class WheelItem(QLabel):
-    """Individual wheel item displaying a table's wheel image with glow effects"""
-
-    def __init__(self, table_data: dict, parent=None):
-        super().__init__(parent)
-        self.table_data = table_data
-        self.is_selected = False
-        self.is_center = False
-        self._scale_factor = 1.0
-        self._animated_scale = 1.0
-
-        self.setFixedSize(200, 200)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setScaledContents(False)
-
-        # Load wheel image
-        self.load_wheel_image()
-
-        # Glow animation for selected item
-        self.glow_intensity = 0.0
-        self.glow_timer = None
-
-    @pyqtProperty(float)
-    def animated_scale(self):
-        """Property for animating scale factor"""
-        return self._animated_scale
-
-    @animated_scale.setter
-    def animated_scale(self, value):
-        """Set animated scale and update display"""
-        self._animated_scale = value
-        self.update_scaled_pixmap()
-
-    def load_wheel_image(self):
-        """Load the wheel image for this table"""
-        wheel_image_path = self.table_data.get('wheel_image', '')
-
-        if wheel_image_path and Path(wheel_image_path).exists():
-            try:
-                pixmap = QPixmap(wheel_image_path)
-                if not pixmap.isNull():
-                    self.original_pixmap = pixmap
-                    self.update_scaled_pixmap()
-                    return
-            except Exception as e:
-                logger.warning(f"Failed to load wheel image {wheel_image_path}: {e}")
-
-        # Create default wheel image with table name
-        self.create_default_wheel_image()
-
-    def create_default_wheel_image(self):
-        """Create a default wheel image with table name text"""
-        pixmap = QPixmap(200, 200)
-        pixmap.fill(QColor(50, 50, 50))
-
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Draw border
-        painter.setPen(QColor(100, 100, 100))
-        painter.drawRoundedRect(5, 5, 190, 190, 10, 10)
-
-        # Draw table name
-        painter.setPen(QColor(255, 255, 255))
-        font = QFont("Arial", 12, QFont.Weight.Bold)
-        painter.setFont(font)
-
-        table_name = self.table_data.get('name', 'Unknown Table')
-        # Wrap text if too long
-        if len(table_name) > 20:
-            words = table_name.split()
-            line1 = ' '.join(words[:len(words)//2])
-            line2 = ' '.join(words[len(words)//2:])
-
-            painter.drawText(10, 90, 180, 30, int(Qt.AlignmentFlag.AlignCenter), line1)
-            painter.drawText(10, 110, 180, 30, int(Qt.AlignmentFlag.AlignCenter), line2)
-        else:
-            painter.drawText(10, 85, 180, 30, int(Qt.AlignmentFlag.AlignCenter), table_name)
-
-        # Draw manufacturer and year
-        manufacturer = self.table_data.get('manufacturer', '')
-        year = self.table_data.get('year', '')
-        info_text = f"{manufacturer} ({year})" if manufacturer and year else str(manufacturer or year or '')
-
-        if info_text:
-            font = QFont("Arial", 10)
-            painter.setFont(font)
-            painter.setPen(QColor(200, 200, 200))
-            painter.drawText(10, 130, 180, 20, int(Qt.AlignmentFlag.AlignCenter), info_text)
-
-        painter.end()
-
-        self.original_pixmap = pixmap
-        self.update_scaled_pixmap()
-
-    def update_scaled_pixmap(self):
-        """Update the displayed pixmap with current scale factor"""
-        if hasattr(self, 'original_pixmap'):
-            # Use animated scale if available, otherwise fall back to scale_factor
-            current_scale = self._animated_scale if hasattr(self, '_animated_scale') else self._scale_factor
-            size = int(200 * current_scale)
-            scaled_pixmap = self.original_pixmap.scaled(
-                size, size,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation
-            )
-            self.setPixmap(scaled_pixmap)
-
-    def set_scale_factor(self, scale: float):
-        """Set the target scale factor for this wheel item"""
-        self._scale_factor = scale
-        self._animated_scale = scale  # Set animated scale to match
-        self.update_scaled_pixmap()
-
-    @property
-    def scale_factor(self):
-        """Get current scale factor"""
-        return self._scale_factor
-
-    def set_selected(self, selected: bool):
-        """Set the selection state - no borders for circular theme"""
-        self.is_selected = selected
-
-        if selected:
-            # No border - clean circular theme
-            # Just transparent background
-            self.setStyleSheet("""
-                border: none;
-                border-radius: 0px;
-                background-color: transparent;
-            """)
-
-            # Stop glow animation if running (we're not using it anymore)
-            if self.glow_timer:
-                self.glow_timer.stop()
-                self.glow_timer = None
-        else:
-            # No border for non-selected items either
-            self.setStyleSheet("""
-                border: none;
-                border-radius: 0px;
-                background-color: transparent;
-            """)
-
-    def _update_glow(self):
-        """Update glow animation - currently disabled for clean circular theme"""
-        pass
-
-
 class WheelWidget(QWidget):
     """PinballX-style wheel widget for table selection"""
 
@@ -457,19 +180,15 @@ class WheelWidget(QWidget):
     table_navigation = pyqtSignal()  # emitted immediately when wheel moves (for sound only)
     rotation_changed = pyqtSignal(int)  # rotation_angle
 
+    INFO_HEIGHT = 156  # px, table info panel
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.logger = get_logger(__name__)
 
         # Wheel state
         self.tables = []
-        self.wheel_items = []
         self.current_index = 0
-        self.visible_items = 7  # Number of items visible on wheel
-
-        # Animation system
-        self.animation_group = None
-        self.animation_duration = 350  # ms - smooth but not too slow
         self.is_animating = False
 
         # Delayed media update system
@@ -506,20 +225,26 @@ class WheelWidget(QWidget):
         self.wheel_container.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.wheel_container.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
 
-        # Add wheel background
-        self.wheel_background = WheelBackground(self.wheel_container)
-        self.wheel_background.lower()  # Ensure it's behind wheel items
+        # The whole wheel (stage, spotlight, logos) is painted by one canvas
+        self.wheel_canvas = WheelCanvas(self.wheel_container)
+        self.wheel_canvas.settled.connect(self._on_wheel_settled)
 
         self.wheel_proxy = self.background_scene.addWidget(self.wheel_container)
         self.wheel_proxy.setZValue(10)
 
         # Table info display embedded in the scene
         self.info_widget = QWidget()
-        self.info_widget.setFixedHeight(120)
+        self.info_widget.setObjectName("infoPanel")
+        self.info_widget.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.info_widget.setFixedHeight(self.INFO_HEIGHT)
+        # Scoped to #infoPanel so the border/radius don't cascade onto the labels inside
         self.info_widget.setStyleSheet("""
-            background-color: rgba(0, 0, 0, 0.7);
-            border-radius: 15px;
-            border: 2px solid rgba(255, 255, 255, 0.3);
+            #infoPanel {
+                background-color: rgba(12, 15, 24, 0.82);
+                border: 1px solid rgba(140, 190, 255, 0.22);
+                border-radius: 22px;
+            }
+            #infoPanel QLabel { background: transparent; border: none; }
         """)
         self.info_proxy = self.background_scene.addWidget(self.info_widget)
         self.info_proxy.setZValue(20)
@@ -567,24 +292,30 @@ class WheelWidget(QWidget):
     def setup_info_widget(self):
         """Setup the table information display"""
         layout = QVBoxLayout(self.info_widget)
-        layout.setContentsMargins(20, 10, 20, 10)
+        layout.setContentsMargins(36, 16, 36, 18)
+        layout.setSpacing(2)
 
         # Table name
         self.table_name_label = QLabel("Select a Table")
         self.table_name_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table_name_label.setStyleSheet("font-size: 24px; font-weight: bold; color: white;")
+        self.table_name_label.setStyleSheet(
+            "font-family: 'Ubuntu Sans', 'Ubuntu', sans-serif; font-size: 40px; font-weight: 600;"
+            " color: #f4f7fc; letter-spacing: 0.5px;")
         layout.addWidget(self.table_name_label)
 
         # Table info (manufacturer, year, play count)
         self.table_info_label = QLabel("")
         self.table_info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table_info_label.setStyleSheet("font-size: 16px; color: #ccc;")
+        self.table_info_label.setStyleSheet(
+            "font-family: 'Ubuntu Sans', 'Ubuntu', sans-serif; font-size: 23px; font-weight: 500;"
+            " color: #8fc3ff; letter-spacing: 1px;")
         layout.addWidget(self.table_info_label)
 
         # Table metadata (theme, IPDB, players, author)
         self.table_metadata_label = QLabel("")
         self.table_metadata_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.table_metadata_label.setStyleSheet("font-size: 14px; color: #aaa;")
+        self.table_metadata_label.setStyleSheet(
+            "font-family: 'Ubuntu Sans', 'Ubuntu', sans-serif; font-size: 18px; color: #8b93a5;")
         self.table_metadata_label.setWordWrap(True)
         layout.addWidget(self.table_metadata_label)
 
@@ -592,238 +323,37 @@ class WheelWidget(QWidget):
         """Set the tables for the wheel"""
         self.tables = tables
         self.current_index = 0
-
-        # Clear existing wheel items
-        for item in self.wheel_items:
-            item.setParent(None)
-        self.wheel_items.clear()
-
-        # Create wheel items
-        for table in tables:
-            wheel_item = WheelItem(table)
-            wheel_item.setParent(self.wheel_container)
-            self.wheel_items.append(wheel_item)
-
+        self.wheel_canvas.set_tables(tables)
         self.update_wheel_display(animate=False)  # No animation on initial setup
 
     def update_wheel_display(self, animate=True):
-        """Update the wheel display positions and scaling with optional animation"""
-        if not self.wheel_items:
+        """Show the current table. Without animation the wheel jumps there and media loads now;
+        animated moves go through _scroll()."""
+        if not self.tables:
             return
-
-        container_width = self.wheel_container.width()
-        container_height = self.wheel_container.height()
-        if container_width <= 0 or container_height <= 0:
-            # If container has no size, force immediate update without animation
-            animate = False
-
         if animate:
-            self._animate_wheel_display()
-        else:
-            self._update_wheel_display_immediate()
-
-    def _update_wheel_display_immediate(self):
-        """Update wheel display immediately without animation"""
-        # Cancel any pending delayed media update since we're updating immediately
-        if hasattr(self, 'media_update_timer') and self.media_update_timer.isActive():
+            self._scroll(0)
+            return
+        if self.media_update_timer.isActive():
             self.media_update_timer.stop()
-
-        container_width = self.wheel_container.width()
-        container_height = self.wheel_container.height()
-        center_x = container_width // 2
-        # Position items very close to bottom, matching arc position (within 150px of bottom)
-        center_y = int(container_height - 150) if container_height > 300 else int(container_height * 0.85)
-
-        # Calculate positions for visible items
-        start_index = max(0, self.current_index - self.visible_items // 2)
-        end_index = min(len(self.wheel_items), start_index + self.visible_items)
-
-        # Hide all items first
-        for item in self.wheel_items:
-            item.hide()
-
-        # Position visible items
-        for i in range(start_index, end_index):
-            item = self.wheel_items[i]
-            relative_pos = i - self.current_index
-
-            # Calculate horizontal position (wheel effect)
-            x_offset = relative_pos * 220  # Spacing between items
-
-            # Improved 3D perspective curve - parabolic y-offset for better depth
-            # Items arc upward as they move away from center
-            y_offset = (relative_pos ** 2) * 8  # Quadratic curve for 3D depth effect
-
-            # Scale factor based on distance from center with smoother falloff
-            if relative_pos == 0:
-                scale_factor = 1.0  # Center item
-                item.set_selected(True)
-            else:
-                # Smooth exponential falloff for scale
-                distance = abs(relative_pos)
-                scale_factor = max(0.55, 1.0 - distance * 0.18)
-                item.set_selected(False)
-
-            item.set_scale_factor(scale_factor)
-
-            # Position the item
-            item_width = int(200 * scale_factor)
-            item_height = int(200 * scale_factor)
-            x = center_x + x_offset - item_width // 2
-            y = center_y + y_offset - item_height // 2
-
-            item.setGeometry(x, y, item_width, item_height)
-            item.show()
-
-        # Update table info
+        self.wheel_canvas.jump_to(self.current_index)
+        self.is_animating = False
         self.update_table_info()
 
-    def _animate_wheel_display(self):
-        """Animate the wheel display with smooth transitions"""
-        container_width = self.wheel_container.width()
-        container_height = self.wheel_container.height()
-
-        # If container has no proper size, fall back to immediate update
-        if container_width <= 0 or container_height <= 0:
-            logger.debug("Container has no size, falling back to immediate update")
-            self._update_wheel_display_immediate()
-            return
-
-        # Stop any existing animation first (allows rapid movement)
-        if self.animation_group and self.animation_group.state() != QParallelAnimationGroup.State.Stopped:
-            self.animation_group.stop()
-            try:
-                self.animation_group.finished.disconnect()
-            except:
-                pass  # Signal might not be connected
-
-        # Cancel any pending media update from previous animation
+    def _scroll(self, delta: int):
+        """Animate the wheel by delta tables. Text updates now; heavy media once it settles."""
         if self.media_update_timer.isActive():
             self.media_update_timer.stop()
             self.logger.debug("Cancelled pending media update due to new wheel movement")
-
-        # Emit navigation signal immediately for sound feedback
-        self.table_navigation.emit()
-
+        self.table_navigation.emit()  # immediate sound feedback
         self.is_animating = True
-        center_x = container_width // 2
-        # Position items very close to bottom, matching arc position (within 150px of bottom)
-        center_y = int(container_height - 150) if container_height > 300 else int(container_height * 0.85)
+        self.wheel_canvas.step(delta)
+        self.update_table_info_text_only()
 
-        self.animation_group = QParallelAnimationGroup()
-
-        # Calculate positions for visible items
-        start_index = max(0, self.current_index - self.visible_items // 2)
-        end_index = min(len(self.wheel_items), start_index + self.visible_items)
-
-        # If no items to animate, fall back to immediate update
-        if start_index >= end_index:
-            self.is_animating = False
-            logger.debug("No items in range, falling back to immediate update")
-            self._update_wheel_display_immediate()
-            return
-
-        # First, position and prepare items before showing them to avoid flash
-        for i in range(len(self.wheel_items)):
-            if start_index <= i < end_index:
-                item = self.wheel_items[i]
-                relative_pos = i - self.current_index
-
-                # Calculate target position for this item
-                x_offset = relative_pos * 220
-                y_offset = (relative_pos ** 2) * 8
-
-                if relative_pos == 0:
-                    target_scale = 1.0
-                else:
-                    distance = abs(relative_pos)
-                    target_scale = max(0.55, 1.0 - distance * 0.18)
-
-                target_width = int(200 * target_scale)
-                target_height = int(200 * target_scale)
-                target_x = center_x + x_offset - target_width // 2
-                target_y = center_y + y_offset - target_height // 2
-
-                # If item was hidden, position it at target location BEFORE showing
-                # This prevents the flash of the old position
-                if not item.isVisible():
-                    item.setGeometry(target_x, target_y, target_width, target_height)
-                    item._animated_scale = target_scale
-
-                # Now show the item (it's already positioned correctly)
-                item.show()
-            else:
-                self.wheel_items[i].hide()
-
-        # Animate visible items
-        for i in range(start_index, end_index):
-            item = self.wheel_items[i]
-            relative_pos = i - self.current_index
-
-            # Calculate target position (wheel effect)
-            x_offset = relative_pos * 220  # Spacing between items
-
-            # Improved 3D perspective curve - parabolic y-offset
-            y_offset = (relative_pos ** 2) * 8  # Quadratic curve for 3D depth effect
-
-            # Target scale factor based on distance from center
-            if relative_pos == 0:
-                target_scale = 1.0  # Center item
-                item.set_selected(True)
-            else:
-                # Smooth exponential falloff for scale
-                distance = abs(relative_pos)
-                target_scale = max(0.55, 1.0 - distance * 0.18)
-                item.set_selected(False)
-
-            # Target position
-            target_width = int(200 * target_scale)
-            target_height = int(200 * target_scale)
-            target_x = center_x + x_offset - target_width // 2
-            target_y = center_y + y_offset - target_height // 2
-
-            # Animate position
-            position_animation = QPropertyAnimation(item, b"geometry")
-            position_animation.setDuration(self.animation_duration)
-            position_animation.setStartValue(item.geometry())
-            position_animation.setEndValue(QRect(target_x, target_y, target_width, target_height))
-            position_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-            # Animate scale
-            scale_animation = QPropertyAnimation(item, b"animated_scale")
-            scale_animation.setDuration(self.animation_duration)
-            scale_animation.setStartValue(item.animated_scale)
-            scale_animation.setEndValue(target_scale)
-            scale_animation.setEasingCurve(QEasingCurve.Type.OutCubic)
-
-            self.animation_group.addAnimation(position_animation)
-            self.animation_group.addAnimation(scale_animation)
-
-        # If no animations were added, fall back to immediate update
-        if self.animation_group.animationCount() == 0:
-            self.is_animating = False
-            logger.debug("No animations added, falling back to immediate update")
-            self._update_wheel_display_immediate()
-            return
-
-        # Connect animation finished signal
-        self.animation_group.finished.connect(self._on_animation_finished)
-
-        # Don't update media immediately - wait for animation to finish
-        # This prevents rapid media changes when scrolling quickly
-
-        # Safety timeout to reset animation flag if animation doesn't complete
-        QTimer.singleShot(self.animation_duration + 100, self._animation_safety_reset)
-
-        # Start the animation
-        self.animation_group.start()
-
-    def _on_animation_finished(self):
-        """Called when wheel animation finishes"""
+    def _on_wheel_settled(self, index: int):
+        """Called when the wheel stops moving"""
         self.is_animating = False
-
-        # Start delayed media update timer
-        # This ensures media only updates after wheel stops moving
+        # Media only loads once the wheel has rested briefly (keeps fast scrolling smooth)
         self.media_update_timer.start(self.media_update_delay)
 
     def _delayed_media_update(self):
@@ -838,15 +368,6 @@ class WheelWidget(QWidget):
         if self.tables and 0 <= self.current_index < len(self.tables):
             table = self.tables[self.current_index]
             self.table_highlighted.emit(table)
-
-    def _animation_safety_reset(self):
-        """Safety reset for animation flag in case animation doesn't complete properly"""
-        if self.is_animating:
-            logger.debug("Animation safety reset triggered - forcing is_animating to False")
-            self.is_animating = False
-            # Also trigger delayed media update if it hasn't been triggered yet
-            if not self.media_update_timer.isActive():
-                self.media_update_timer.start(self.media_update_delay)
 
     def _on_background_media_status_changed(self, status):
         """Handle background media status changes for looping"""
@@ -975,6 +496,7 @@ class WheelWidget(QWidget):
 
         info_text = " • ".join(info_parts) if info_parts else ""
         self.table_info_label.setText(info_text)
+        self.table_info_label.setVisible(bool(info_text))  # no empty gap in the panel
 
         # Table metadata (theme, IPDB, players, author)
         metadata_parts = []
@@ -1000,6 +522,7 @@ class WheelWidget(QWidget):
 
         metadata_text = " • ".join(metadata_parts)
         self.table_metadata_label.setText(metadata_text)
+        self.table_metadata_label.setVisible(bool(metadata_text))
 
     def update_table_info(self):
         """Update the table information display with media (called after delay)"""
@@ -1032,26 +555,16 @@ class WheelWidget(QWidget):
         if not self.tables:
             return
 
-        if self.current_index > 0:
-            self.current_index -= 1
-        else:
-            # Wrap to end of list
-            self.current_index = len(self.tables) - 1
-
-        self.update_wheel_display(animate=True)
+        self.current_index = (self.current_index - 1) % len(self.tables)
+        self._scroll(-1)
 
     def move_wheel_right(self):
         """Move wheel selection to the right with animation (wraps around)"""
         if not self.tables:
             return
 
-        if self.current_index < len(self.tables) - 1:
-            self.current_index += 1
-        else:
-            # Wrap to beginning of list
-            self.current_index = 0
-
-        self.update_wheel_display(animate=True)
+        self.current_index = (self.current_index + 1) % len(self.tables)
+        self._scroll(1)
 
     def select_current_table(self):
         """Select the currently highlighted table"""
@@ -1280,39 +793,27 @@ class WheelWidget(QWidget):
             self.default_background_proxy.setGeometry(QRectF(0, 0, width, height))
             self.default_background.resize(int(width), int(height))
 
-        info_top_y = None
-        info_height = 120
-        if hasattr(self, 'info_widget') and self.info_widget.height() > 0:
-            info_height = self.info_widget.height()
+        info_height = self.INFO_HEIGHT
+        # Logical width that is actually on screen (the scene is wider when rotated 90/270)
+        visible_width = height if getattr(self, 'rotation_angle', 0) in (90, 270) else width
 
-        # Info panel placement
+        # Info panel placement: centred under the wheel, near the bottom edge
         if hasattr(self, 'info_proxy'):
-            info_width = max(0, min(600, max(0, width - 40)))
-            info_x = (width - info_width) / 2 if width >= info_width else 0
-            info_top_y = height - 140 if height >= 140 else max(0, height - info_height)
+            info_width = max(0, min(980, int(visible_width * 0.6), width - 40))
+            info_x = (width - info_width) / 2
+            info_top_y = max(0, height - info_height - 28)
             self.info_proxy.setGeometry(QRectF(info_x, info_top_y, info_width, info_height))
             self.info_widget.resize(int(info_width), info_height)
 
-        # Wheel container placement - extend to just above info panel with 20px gap
+        # Wheel container spans to the bottom of the screen; the stage sits behind the info panel
         if hasattr(self, 'wheel_proxy'):
-            # Use full width of the screen
-            wheel_width = width
-            wheel_x = 0
-
-            # Extend container from top to 20px above info panel
-            top_margin = 20.0
-            gap_before_info = 20.0
-            wheel_y = top_margin
-            # Wheel bottom = info_top - gap = (height - 140) - 20 = height - 160
-            # wheel_height = (height - 160) - top_margin = height - 180
-            wheel_height = height - 180
-
-            self.wheel_proxy.setGeometry(QRectF(wheel_x, wheel_y, wheel_width, wheel_height))
-            self.wheel_container.resize(int(wheel_width), int(wheel_height))
-
-            # Update wheel background size to match container (extends to bottom)
-            if hasattr(self, 'wheel_background'):
-                self.wheel_background.setGeometry(0, 0, int(wheel_width), int(wheel_height))
+            wheel_y = 20.0
+            wheel_height = max(0.0, height - wheel_y)
+            self.wheel_proxy.setGeometry(QRectF(0, wheel_y, width, wheel_height))
+            self.wheel_container.resize(int(width), int(wheel_height))
+            if hasattr(self, 'wheel_canvas'):
+                self.wheel_canvas.setGeometry(0, 0, int(width), int(wheel_height))
+                self.wheel_canvas.set_layout_metrics(int(visible_width), info_height + 40)
 
     def keyPressEvent(self, event):
         """Handle key press events"""
@@ -1339,10 +840,6 @@ class WheelWidget(QWidget):
                 self.media_update_timer.stop()
                 logger.debug("Stopped media_update_timer")
 
-            if hasattr(self, 'wheel_background') and self.wheel_background:
-                if hasattr(self.wheel_background, 'glow_timer'):
-                    self.wheel_background.glow_timer.stop()
-                    logger.debug("Stopped wheel_background glow_timer")
 
             # Stop loading popup timers if they exist
             # The loading popup might not exist as it's created dynamically
@@ -1355,14 +852,9 @@ class WheelWidget(QWidget):
                     child.fade_out_timer.stop()
             logger.debug("Stopped loading popup timers")
 
-            # Stop animation group
-            if hasattr(self, 'animation_group') and self.animation_group:
-                self.animation_group.stop()
-                try:
-                    self.animation_group.finished.disconnect()
-                except:
-                    pass
-                logger.debug("Stopped animation group")
+            # Stop wheel motion
+            if hasattr(self, 'wheel_canvas') and self.wheel_canvas:
+                self.wheel_canvas.jump_to(self.current_index)
 
             # Stop background video and clean up media player - DO THIS SYNCHRONOUSLY
             if hasattr(self, 'background_media_player') and self.background_media_player:
