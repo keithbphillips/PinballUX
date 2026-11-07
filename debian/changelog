@@ -1,3 +1,27 @@
+pinballux (0.7.0-1) unstable; urgency=medium
+
+  * Redesign the table wheel: painted arc carousel with continuous, smooth
+    motion, even spacing, edge fades, wrap-around and a cleaner info panel
+  * Fix PinballUX segfaulting when a table crashes, and recover the wheel
+    (loading popup, joystick polling) after a crash or failed launch
+  * Fix play statistics never being saved (play count, play time, last played)
+  * Never overwrite config.json with defaults on a load error; atomic saves
+  * Single-instance lock no longer blocks startup after a crash (flock)
+  * Re-detect joysticks plugged in late or reconnected
+  * Write VPinballX.ini Joy* values as SDL game-controller buttons (+1), as
+    VPinball Standalone expects; fix gamecontrollerdb.txt line corruption
+  * Remove deleted/renamed tables from the database on startup (with a
+    safety guard), and fix table removal failing for tables with play history
+  * Accept Esc/PgUp/Ins/Del/F1 key names saved by pinballux-setup
+  * New: optional custom window geometry per display (several displays on
+    one monitor), preview-only rotation for OS-rotated portrait playfields,
+    topper video support
+  * Retry videos once after a transient GStreamer error (blank DMD)
+  * Table Manager: never cache empty or partial FTP downloads
+  * Rotate the log file; quieter joystick config warnings; remove dead code
+
+ -- Keith Phillips <keith@example.com>  Sat, 07 Nov 2026 15:30:00 -0600
+
 pinballux (0.6.0-1) unstable; urgency=medium
 
   * Add loading popup overlay on wheel when VPX table launches
