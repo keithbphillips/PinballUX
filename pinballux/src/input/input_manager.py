@@ -50,6 +50,10 @@ class InputManager(QObject):
     # Signals for input actions
     action_triggered = pyqtSignal(InputAction)
 
+    # joystick_buttons entries that setup_gui writes for VPinball itself (VPinballX.ini /
+    # gamecontrollerdb). They are valid config, just not frontend actions.
+    VPX_ONLY_BUTTONS = {'LEFT_FLIPPER', 'RIGHT_FLIPPER', 'LEFT_MAGNASAVE', 'RIGHT_MAGNASAVE', 'EXIT_TABLE'}
+
     def __init__(self, config=None, parent=None):
         super().__init__(parent)
         self.logger = get_logger(__name__)
@@ -237,6 +241,10 @@ class InputManager(QObject):
         if self.config and hasattr(self.config, 'input') and self.config.input.joystick_buttons:
             self.logger.info("Loading joystick button mappings from config")
             for action_name, button_num in self.config.input.joystick_buttons.items():
+                if action_name.upper() in self.VPX_ONLY_BUTTONS:
+                    # Written by setup_gui for VPinballX.ini / SDL mappings; not a frontend action
+                    self.logger.debug(f"Skipping VPinball-only button mapping {action_name}={button_num}")
+                    continue
                 try:
                     action = InputAction(action_name.lower())
                     self.input_bindings.append(

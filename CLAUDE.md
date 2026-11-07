@@ -87,7 +87,7 @@ The application uses PyQt6 signals for loose coupling:
 
 This is an early-stage project. The core multi-monitor architecture and configuration system are implemented. Key areas needing implementation:
 
-1. Main UI table selection interface (`ui/main_window.py` - referenced but not implemented)
+1. Main UI table selection interface (`ui/wheel_widget.py`, `WheelMainWindow`)
 2. Display components (`backglass_display.py`, `dmd_display.py`, `topper_display.py` - referenced but not implemented)
 3. VPX table database and launching system
 4. Media playback system

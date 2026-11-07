@@ -458,6 +458,10 @@ class FTPDownloadThread(QThread):
 
                         temp_path = media_type_dir / filename
 
+                        # An empty file is a failed earlier download, not a cached one
+                        if temp_path.exists() and temp_path.stat().st_size == 0:
+                            temp_path.unlink()
+
                         if temp_path.exists():
                             # File already in cache, skip download but still add to list
                             self.progress_update.emit(processed, total_to_download)
@@ -483,8 +487,26 @@ class FTPDownloadThread(QThread):
                                 self.progress_update.emit(processed, total_to_download)
                                 self.progress.emit(f"[{processed}/{total_to_download}] Downloading: {filename}")
 
-                                with open(temp_path, 'wb') as f:
-                                    ftp.retrbinary(f'RETR {filename}', download_callback)
+                                # Download to a .part file and only rename it into place when
+                                # complete, so a failed transfer is never mistaken for a cached file
+                                part_path = temp_path.with_name(temp_path.name + '.part')
+                                expected_size = None
+                                try:
+                                    ftp.voidcmd('TYPE I')
+                                    expected_size = ftp.size(filename)
+                                except Exception:
+                                    pass  # SIZE not supported; fall back to non-empty check
+                                try:
+                                    with open(part_path, 'wb') as f:
+                                        ftp.retrbinary(f'RETR {filename}', download_callback)
+                                    if bytes_downloaded == 0:
+                                        raise IOError("server sent an empty file")
+                                    if expected_size and bytes_downloaded != expected_size:
+                                        raise IOError(f"incomplete download ({bytes_downloaded} of {expected_size} bytes)")
+                                    part_path.replace(temp_path)
+                                finally:
+                                    if part_path.exists():
+                                        part_path.unlink()
 
                                 elapsed = time.time() - start_time
                                 speed_kbps = (bytes_downloaded / 1024) / elapsed if elapsed > 0 else 0

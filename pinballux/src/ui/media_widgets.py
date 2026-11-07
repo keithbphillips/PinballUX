@@ -330,6 +330,7 @@ class VideoWidget(QWidget):
             self.media_player.stop()
 
             self.current_video_path = video_path
+            self._retried_path = None
             media_url = QUrl.fromLocalFile(str(Path(video_path).resolve()))
             self.media_player.setSource(media_url)
 
@@ -465,8 +466,28 @@ class VideoWidget(QWidget):
             logger.error(f"Invalid media: {self.current_video_path}")
 
     def _on_error_occurred(self, error, error_string):
-        """Handle media player errors"""
+        """Handle media player errors.
+
+        GStreamer occasionally fails to start a pipeline ("Internal data stream error")
+        for a file that plays fine on the next attempt (~5% of DMD loads on the cabinet).
+        Retry each file once before giving up, so the display doesn't stay blank.
+        """
+        path = self.current_video_path
+        if path and getattr(self, '_retried_path', None) != path:
+            self._retried_path = path
+            logger.warning(f"Media player error: {error_string} - retrying {Path(path).name}")
+            QTimer.singleShot(250, lambda: self._retry_load(path))
+            return
         logger.error(f"Media player error: {error_string}")
+
+    def _retry_load(self, path: str):
+        """Reload and play the same file, unless something else was loaded meanwhile"""
+        if not self.media_player or self.current_video_path != path:
+            return
+        self.media_player.stop()
+        self.media_player.setSource(QUrl())
+        self.media_player.setSource(QUrl.fromLocalFile(str(Path(path).resolve())))
+        self.media_player.play()
 
     def clear_video(self):
         """Clear the current video"""

@@ -48,7 +48,6 @@
 │   │
 │   └── ui/
 │       ├── __init__.py
-│       ├── main_window.py
 │       ├── media_widgets.py
 │       └── wheel_widget.py
 │
