@@ -38,7 +38,7 @@ For help and information: https://x.com/PinballUX
 
 ```bash
 # Download the latest package and installer
-wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.7.0-1_all.deb
+wget https://github.com/keithbphillips/PinballUX/releases/latest/download/pinballux_0.7.1-1_all.deb
 wget https://raw.githubusercontent.com/keithbphillips/PinballUX/main/install.sh
 chmod +x install.sh
 
@@ -50,10 +50,10 @@ Or install manually:
 ```bash
 # Using gdebi (recommended — handles dependencies automatically)
 sudo apt install gdebi-core
-sudo gdebi pinballux_0.7.0-1_all.deb
+sudo gdebi pinballux_0.7.1-1_all.deb
 
 # Or using dpkg + apt
-sudo dpkg -i pinballux_0.7.0-1_all.deb
+sudo dpkg -i pinballux_0.7.1-1_all.deb
 sudo apt-get install -f -y
 ```
 
