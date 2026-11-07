@@ -65,6 +65,10 @@ pinballux/data/media/images/**/*
 # Keep UI audio files
 !pinballux/data/media/audio/ui/*
 
+# Keep application icons (installed by debian/rules)
+!pinballux/data/media/images/Icons/
+!pinballux/data/media/images/Icons/*.png
+
 # Tables directory - exclude table files but keep structure
 pinballux/data/tables/**/*
 !pinballux/data/tables/.gitkeep
