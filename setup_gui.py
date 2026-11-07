@@ -783,6 +783,24 @@ class DisplayConfigTab(QWidget):
             rotation.setCurrentIndex(0)  # Default to 0° rotation
         ux_layout.addRow("Rotation:", rotation)
 
+        # Window geometry (backglass/DMD/topper): fill the screen, or use the position below
+        custom_geometry = None
+        preview_rotation = None
+        if display_type != 'playfield':
+            custom_geometry = QCheckBox("Use the position/size below for the PinballUX window")
+            custom_geometry.setToolTip("Lets several displays share one screen (e.g. backglass + DMD).\n"
+                                       "Unchecked: the PinballUX window fills the whole screen.")
+            custom_geometry.setChecked(bool(current and getattr(current, 'use_custom_geometry', False)))
+            ux_layout.addRow("Window:", custom_geometry)
+        else:
+            preview_rotation = QComboBox()
+            preview_rotation.addItems(["0°", "90°", "180°", "270°"])
+            current_pr = getattr(current, 'preview_rotation', 0) if current else 0
+            preview_rotation.setCurrentIndex([0, 90, 180, 270].index(current_pr) if current_pr in (0, 90, 180, 270) else 0)
+            preview_rotation.setToolTip("Rotates table preview videos/images only (when Rotation is 0°),\n"
+                                        "e.g. 270° for landscape media on a portrait screen rotated by the system.")
+            ux_layout.addRow("Preview Rotation:", preview_rotation)
+
         # DMD mode (only for DMD displays)
         dmd_mode = None
         if 'dmd' in display_type:
@@ -877,6 +895,8 @@ class DisplayConfigTab(QWidget):
             'screen_combo': screen_combo,
             'rotation': rotation,
             'dmd_mode': dmd_mode,
+            'custom_geometry': custom_geometry,
+            'preview_rotation': preview_rotation,
             'vpx_x': vpx_x,
             'vpx_y': vpx_y,
             'vpx_width': vpx_width,
@@ -1059,7 +1079,10 @@ class DisplayConfigTab(QWidget):
                     y=vpx_y,
                     width=vpx_width,
                     height=vpx_height,
-                    dmd_mode=dmd_mode
+                    dmd_mode=dmd_mode,
+                    use_custom_geometry=bool(widgets['custom_geometry'] and widgets['custom_geometry'].isChecked()),
+                    preview_rotation=([0, 90, 180, 270][widgets['preview_rotation'].currentIndex()]
+                                      if widgets['preview_rotation'] else 0),
                 )
                 setattr(self.config.displays, display_type, monitor_config)
             else:

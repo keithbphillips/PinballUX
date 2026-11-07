@@ -3,8 +3,9 @@ Base display class for all monitor displays
 """
 
 from abc import ABC, abstractmethod
+from typing import Optional
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSignal, QRect, QTimer
 from PyQt6.QtGui import QPixmap, QPalette
 
 from ..core.config import MonitorConfig
@@ -43,27 +44,40 @@ class BaseDisplay(QWidget):
         if self.monitor_config.rotation != 0:
             self._apply_rotation()
 
+    def _target_geometry(self) -> Optional[QRect]:
+        """Window geometry: the configured x/y/width/height when use_custom_geometry is on
+        (lets several displays share one screen), otherwise the whole target screen."""
+        mc = self.monitor_config
+        if getattr(mc, 'use_custom_geometry', False) and None not in (mc.x, mc.y, mc.width, mc.height) \
+                and mc.width > 0 and mc.height > 0:
+            return QRect(mc.x, mc.y, mc.width, mc.height)
+        if self.target_screen:
+            return self.target_screen.geometry()
+        return None
+
+    def _apply_geometry(self):
+        geom = self._target_geometry()
+        if geom is None:
+            return
+        # Assign the screen first, then the geometry (setScreen can move the window)
+        if self.windowHandle() and self.target_screen:
+            self.windowHandle().setScreen(self.target_screen)
+        self.setGeometry(geom)
+
     def showEvent(self, event):
-        """Handle show event - move window to target screen"""
+        """Handle show event - move window to its target screen/geometry"""
         super().showEvent(event)
 
-        # Move to target screen after the window is shown
-        if self.target_screen:
-            # Get the screen geometry
-            screen_geom = self.target_screen.geometry()
-
-            self.logger.info(
-                f"Moving {self.monitor_config.name} to screen at "
-                f"({screen_geom.x()}, {screen_geom.y()}) {screen_geom.width()}x{screen_geom.height()}"
-            )
-
-            # Move window to the target screen's position
-            self.move(screen_geom.x(), screen_geom.y())
-            self.resize(screen_geom.width(), screen_geom.height())
-
-            # Force window to be on correct screen via windowHandle if available
-            if self.windowHandle():
-                self.windowHandle().setScreen(self.target_screen)
+        geom = self._target_geometry()
+        if geom is None:
+            return
+        self.logger.info(
+            f"Placing {self.monitor_config.name} at ({geom.x()}, {geom.y()}) {geom.width()}x{geom.height()}"
+            f"{' (custom geometry)' if getattr(self.monitor_config, 'use_custom_geometry', False) else ''}"
+        )
+        self._apply_geometry()
+        # X11 window managers may reposition a window right after mapping it - apply once more
+        QTimer.singleShot(0, self._apply_geometry)
 
     def _apply_rotation(self):
         """Apply rotation transformation to the display"""

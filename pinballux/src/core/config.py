@@ -25,6 +25,12 @@ class MonitorConfig:
     height: Optional[int] = None
     # DMD-specific display mode: "native" or "full"
     dmd_mode: str = "full"  # "native" keeps original size, "full" scales to screen
+    # Use x/y/width/height for the PinballUX window instead of filling the whole screen.
+    # Off by default: pinballux-setup stores VPinball's window positions in these fields.
+    use_custom_geometry: bool = False
+    # Playfield only: rotate preview videos/images (clockwise) while the wheel itself is not
+    # rotated, e.g. on a portrait screen rotated by the OS (xrandr) with landscape media packs.
+    preview_rotation: int = 0
 
 
 @dataclass
