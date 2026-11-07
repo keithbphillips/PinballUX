@@ -707,7 +707,10 @@ class TableService:
                 session.commit()
 
         except Exception as e:
+            # Nothing was committed - don't report removals that didn't happen
             self.logger.error(f"Failed to remove missing tables: {e}")
+            result['disabled'] = 0
+            result['removed'] = 0
 
         return result
 
@@ -766,7 +769,10 @@ class TableService:
                 session.commit()
 
         except Exception as e:
+            # Nothing was committed - don't report removals that didn't happen
             self.logger.error(f"Failed to remove tables outside directory: {e}")
+            result['disabled'] = 0
+            result['removed'] = 0
 
         return result
 

@@ -119,8 +119,15 @@ class InputManager(QObject):
         }
 
         qt_key = key_map.get(key_name)
+        if qt_key is None and key_name:
+            # pinballux-setup stores keys via QKeySequence(key).toString(), which gives short
+            # names like "Esc", "PgUp", "Ins", "Del", "F1" - let Qt parse those back.
+            from PyQt6.QtGui import QKeySequence
+            seq = QKeySequence.fromString(key_name)
+            if seq.count() == 1:
+                qt_key = seq[0].key()
         if qt_key is None:
-            self.logger.warning(f"Unknown key name: {key_name}, using default")
+            self.logger.warning(f"Unknown key name: {key_name}, binding ignored")
         return qt_key
 
     def _initialize_pygame(self):

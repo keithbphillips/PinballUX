@@ -75,8 +75,9 @@ class Table(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    categories = relationship("TableCategory", back_populates="table")
-    play_sessions = relationship("PlaySession", back_populates="table", order_by="PlaySession.start_time.desc()")
+    categories = relationship("TableCategory", back_populates="table", cascade="all, delete-orphan")
+    play_sessions = relationship("PlaySession", back_populates="table", order_by="PlaySession.start_time.desc()",
+                                 cascade="all, delete-orphan")
 
     def __repr__(self):
         return f"<Table(name='{self.name}', manufacturer='{self.manufacturer}', year={self.year})>"
@@ -229,6 +230,9 @@ class DatabaseManager:
             # Create default categories
             self._create_default_categories()
 
+            # Drop entries whose .vpx file was deleted or moved
+            self._remove_missing_tables()
+
             logger.info("Database initialized successfully")
 
         except Exception as e:
@@ -270,6 +274,35 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to run migrations: {e}")
             # Don't raise - continue with initialization
+
+    def _remove_missing_tables(self, max_missing_fraction: float = 0.5):
+        """Remove tables whose .vpx file no longer exists (deleted or renamed folders).
+
+        Safety guard: if more than max_missing_fraction of all tables are missing, the table
+        directory is probably just unavailable (unmounted drive, share not ready) - remove
+        nothing, so play statistics aren't lost.
+        """
+        from pathlib import Path
+        try:
+            with self.get_session() as session:
+                tables = session.query(Table).all()
+                missing = [t for t in tables if not t.file_path or not Path(t.file_path).exists()]
+                if not missing:
+                    return 0
+                if len(missing) > len(tables) * max_missing_fraction:
+                    logger.warning(
+                        f"{len(missing)} of {len(tables)} table files are missing - table directory "
+                        f"may be unavailable; not removing any tables")
+                    return 0
+                for table in missing:
+                    logger.info(f"Removing table without .vpx file: {table.name} ({table.file_path})")
+                    session.delete(table)
+                session.commit()
+                logger.info(f"Removed {len(missing)} missing table(s) from the database")
+                return len(missing)
+        except Exception as e:
+            logger.error(f"Failed to remove missing tables: {e}")
+            return 0
 
     def get_session(self) -> Session:
         """Get a database session"""
@@ -367,8 +400,8 @@ class DatabaseManager:
                 # Update table statistics
                 table = session.query(Table).filter(Table.id == table_id).first()
                 if table:
-                    table.play_count += 1
-                    table.total_play_time += duration
+                    table.play_count = (table.play_count or 0) + 1
+                    table.total_play_time = (table.total_play_time or 0) + duration
                     table.last_played = datetime.utcnow()
                     table.updated_at = datetime.utcnow()
 

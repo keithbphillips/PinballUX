@@ -1461,8 +1461,13 @@ class JoystickConfigTab(QWidget):
         self.enabled.setChecked(self.config.input.joystick_enabled)
         layout.addWidget(self.enabled)
 
-        # Read button mappings from VPinballX.ini first, fall back to PinballUX config
-        vpx_buttons = self.vpx_manager.read_joystick_config()
+        # Raw encoder buttons: read back from this joystick's gamecontrollerdb.txt mapping
+        # (VPinballX.ini holds game-controller button numbers, not raw ones), then fall back
+        # to the PinballUX config
+        try:
+            vpx_buttons = self.gc_manager.read_raw_buttons()
+        except Exception:
+            vpx_buttons = {}
 
         # Button mappings
         form = QFormLayout()
@@ -1520,25 +1525,9 @@ class JoystickConfigTab(QWidget):
         if not vpx_path.exists():
             return  # VPX config doesn't exist yet
 
-        # Map PinballUX actions to VPX ini keys
-        vpx_mappings = {}
-
-        if 'LEFT_FLIPPER' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyLFlipKey'] = self.config.input.joystick_buttons['LEFT_FLIPPER']
-        if 'RIGHT_FLIPPER' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyRFlipKey'] = self.config.input.joystick_buttons['RIGHT_FLIPPER']
-        if 'PLUNGER' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyPlungerKey'] = self.config.input.joystick_buttons['PLUNGER']
-        if 'START' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyStartGameKey'] = self.config.input.joystick_buttons['START']
-        if 'MENU' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyAddCreditKey'] = self.config.input.joystick_buttons['MENU']
-        if 'LEFT_MAGNASAVE' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyLMagnaSave'] = self.config.input.joystick_buttons['LEFT_MAGNASAVE']
-        if 'RIGHT_MAGNASAVE' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyRMagnaSave'] = self.config.input.joystick_buttons['RIGHT_MAGNASAVE']
-        if 'EXIT_TABLE' in self.config.input.joystick_buttons:
-            vpx_mappings['JoyExitGameKey'] = self.config.input.joystick_buttons['EXIT_TABLE']
+        # VPinball Standalone reads Joy* as SDL game-controller button + 1 (the device is opened
+        # through gamecontrollerdb.txt), so translate the raw encoder buttons. Unassigned -> 0.
+        vpx_mappings = GameControllerManager.vpx_joy_values(self.config.input.joystick_buttons)
 
         if not vpx_mappings:
             return  # Nothing to save
