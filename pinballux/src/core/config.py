@@ -4,9 +4,11 @@ Configuration management for PinballUX
 
 import os
 import json
+import shutil
+import time
 from pathlib import Path
 from typing import Dict, Any, Optional
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, fields
 
 
 @dataclass
@@ -95,7 +97,17 @@ class Config:
         """Load a MonitorConfig from dictionary data"""
         if not data:
             return None
-        return MonitorConfig(**data)
+        return MonitorConfig(**self._known_fields(MonitorConfig, data))
+
+    @staticmethod
+    def _known_fields(cls, data: Dict[str, Any]) -> Dict[str, Any]:
+        """Drop keys the dataclass doesn't define (e.g. written by a newer/older version),
+        so one unexpected key doesn't make the whole config fail to load."""
+        names = {f.name for f in fields(cls)}
+        unknown = set(data) - names
+        if unknown:
+            print(f"Config: ignoring unknown {cls.__name__} keys: {sorted(unknown)}")
+        return {k: v for k, v in data.items() if k in names}
 
     def load(self) -> None:
         """Load configuration from file"""
@@ -117,21 +129,27 @@ class Config:
 
                 # Load VPX configuration
                 if 'vpx' in data:
-                    self.vpx = VPXConfig(**data['vpx'])
+                    self.vpx = VPXConfig(**self._known_fields(VPXConfig, data['vpx']))
 
                 # Load input configuration
                 if 'input' in data:
-                    self.input = InputConfig(**data['input'])
+                    self.input = InputConfig(**self._known_fields(InputConfig, data['input']))
 
                 # Load audio configuration
                 if 'audio' in data:
-                    self.audio = AudioConfig(**data['audio'])
+                    self.audio = AudioConfig(**self._known_fields(AudioConfig, data['audio']))
 
                 # Update paths to use project-relative paths if they're still using old defaults
                 self._update_default_paths()
 
             except Exception as e:
-                print(f"Error loading config: {e}")
+                # Keep the unreadable file instead of overwriting the user's setup with defaults
+                backup = f"{self.config_file}.corrupt-{time.strftime('%Y%m%d-%H%M%S')}"
+                try:
+                    shutil.copy2(self.config_file, backup)
+                    print(f"Error loading config: {e} - kept a copy at {backup}, using defaults")
+                except OSError:
+                    print(f"Error loading config: {e} - using defaults")
                 self._create_default_config()
         else:
             self._create_default_config()
@@ -168,8 +186,14 @@ class Config:
                 'audio': asdict(self.audio)
             }
 
-            with open(self.config_file, 'w') as f:
+            # Write to a temp file and atomically replace, so a crash mid-save
+            # can't leave a truncated config.json
+            tmp_file = f"{self.config_file}.tmp"
+            with open(tmp_file, 'w') as f:
                 json.dump(config_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp_file, self.config_file)
 
         except Exception as e:
             print(f"Error saving config: {e}")

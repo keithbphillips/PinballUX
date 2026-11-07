@@ -125,6 +125,22 @@ class InputManager(QObject):
             pygame.init()
             pygame.joystick.init()
 
+            self._init_joysticks()
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize pygame: {e}")
+            self.joystick_enabled = False
+
+    def _init_joysticks(self):
+        """(Re)enumerate joysticks. Called at startup and when the device count changes."""
+        for joystick in self.joysticks:
+            try:
+                joystick.quit()
+            except Exception:
+                pass
+        self.joysticks = []
+        self.prev_joystick_state = {}
+        try:
             joystick_count = pygame.joystick.get_count()
             self.logger.info(f"Found {joystick_count} joystick(s)")
 
@@ -149,10 +165,22 @@ class InputManager(QObject):
 
                 except Exception as e:
                     self.logger.error(f"Failed to initialize joystick {i}: {e}")
-
         except Exception as e:
-            self.logger.error(f"Failed to initialize pygame: {e}")
-            self.joystick_enabled = False
+            self.logger.error(f"Failed to enumerate joysticks: {e}")
+
+    def _sync_prev_state(self):
+        """Snapshot current joystick state so inputs already held (e.g. the button used to
+        quit a table) aren't reported as new presses when polling resumes."""
+        try:
+            pygame.event.pump()
+            for joystick_id, joystick in enumerate(self.joysticks):
+                self.prev_joystick_state[joystick_id] = {
+                    'buttons': [bool(joystick.get_button(b)) for b in range(joystick.get_numbuttons())],
+                    'axes': [joystick.get_axis(a) for a in range(joystick.get_numaxes())],
+                    'hats': [joystick.get_hat(h) for h in range(joystick.get_numhats())],
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to sync joystick state: {e}")
 
     def _setup_default_bindings(self):
         """Setup default input bindings"""
@@ -242,9 +270,11 @@ class InputManager(QObject):
 
     def start_polling(self):
         """Start polling for joystick input"""
-        if self.joystick_enabled and self.joysticks:
+        if self.joystick_enabled:
+            self._sync_prev_state()
+            self._polls_since_device_check = 0
             self.poll_timer.start(self.poll_interval)
-            self.logger.info("Started joystick polling")
+            self.logger.info(f"Started joystick polling ({len(self.joysticks)} joystick(s))")
 
     def stop_polling(self):
         """Stop polling for joystick input"""
@@ -258,6 +288,16 @@ class InputManager(QObject):
 
         try:
             pygame.event.pump()
+
+            # Hotplug: every ~2s, re-enumerate if the number of devices changed
+            self._polls_since_device_check = getattr(self, '_polls_since_device_check', 0) + 1
+            if self._polls_since_device_check * self.poll_interval >= 2000:
+                self._polls_since_device_check = 0
+                count = pygame.joystick.get_count()
+                if count != len(self.joysticks):
+                    self.logger.info(f"Joystick count changed ({len(self.joysticks)} -> {count}), re-initializing")
+                    self._init_joysticks()
+                    self._sync_prev_state()
 
             for joystick_id, joystick in enumerate(self.joysticks):
                 if joystick_id not in self.prev_joystick_state:

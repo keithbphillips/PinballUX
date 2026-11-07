@@ -230,10 +230,19 @@ class VPXLauncher(QObject):
         table_path = self.current_table_path
         duration = self.get_play_duration()
 
-        # Clean up state
+        # Clean up state. Keep a reference to the QProcess: it is still emitting this
+        # signal, and dropping the last Python reference here would free it mid-emission
+        # (segfault). Qt deletes it later via deleteLater().
+        self._finished_process = self.current_process
+        if self._finished_process is not None:
+            self._finished_process.deleteLater()
         self.current_process = None
         self.current_table_path = None
         self.launch_time = None
+
+        if table_path is None:
+            # Already reported (e.g. launch failure) - don't emit a second, path-less signal
+            return
 
         if exit_status == QProcess.ExitStatus.NormalExit:
             self.logger.info(f"Table exited normally with code {exit_code}, duration: {duration}s")
@@ -302,9 +311,12 @@ class VPXLauncher(QObject):
             return False
 
     def _on_process_error(self, error: QProcess.ProcessError):
-        """Handle process error signal"""
-        self.monitor_timer.stop()
+        """Handle process error signal
 
+        Only FailedToStart ends a session here. For a crash Qt emits errorOccurred(Crashed)
+        and then finished(CrashExit); _on_process_finished reports it (once, with the
+        exit code). Read/write/timeout errors don't mean the process has stopped.
+        """
         table_path = self.current_table_path
         error_messages = {
             QProcess.ProcessError.FailedToStart: "Failed to start process",
@@ -318,7 +330,14 @@ class VPXLauncher(QObject):
         error_msg = error_messages.get(error, f"Process error: {error}")
         self.logger.error(error_msg)
 
-        # Clean up state
+        if error != QProcess.ProcessError.FailedToStart:
+            return
+
+        # Clean up state (keep the QProcess alive until Qt is done with it - see above)
+        self.monitor_timer.stop()
+        self._finished_process = self.current_process
+        if self._finished_process is not None:
+            self._finished_process.deleteLater()
         self.current_process = None
         self.current_table_path = None
         self.launch_time = None

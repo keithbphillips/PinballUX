@@ -1427,6 +1427,10 @@ class WheelMainWindow(QWidget):
         if self.launch_manager:
             self.launch_manager.launcher.table_launched.connect(self._on_table_launched)
             self.launch_manager.launcher.table_exited.connect(self._on_table_exited)
+            # Without these, a crashed table or failed launch leaves the loading popup up
+            # and joystick polling stopped
+            self.launch_manager.launcher.table_crashed.connect(self._on_table_crashed_or_failed)
+            self.launch_manager.launcher.launch_failed.connect(self._on_table_crashed_or_failed)
 
         self.setup_ui()
         self.load_tables()
@@ -1731,6 +1735,11 @@ class WheelMainWindow(QWidget):
         if self.wheel_widget and self.wheel_widget.tables and 0 <= self.wheel_widget.current_index < len(self.wheel_widget.tables):
             current_table = self.wheel_widget.tables[self.wheel_widget.current_index]
             self.on_table_highlighted(current_table)
+
+    def _on_table_crashed_or_failed(self, table_path: str, error_message: str):
+        """Handle a crashed table or failed launch - return to the wheel like a normal exit"""
+        self.logger.warning(f"Table ended abnormally ({error_message}), restoring frontend")
+        self._on_table_exited(table_path, -1, 0)
 
     def on_rotation_changed(self, rotation_angle: int):
         """Handle rotation change - save to config"""
