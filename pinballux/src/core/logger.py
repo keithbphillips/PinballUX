@@ -3,6 +3,7 @@ Logging configuration for PinballUX
 """
 
 import logging
+import logging.handlers
 import sys
 from pathlib import Path
 from typing import Optional
@@ -32,7 +33,8 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
         datefmt=date_format,
         handlers=[
             logging.StreamHandler(sys.stdout),
-            logging.FileHandler(log_file, mode='a')
+            # Rotate so the log can't grow without bound (was 3 MB and counting)
+            logging.handlers.RotatingFileHandler(log_file, maxBytes=5 * 1024 * 1024, backupCount=3)
         ]
     )
 
