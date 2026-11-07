@@ -105,3 +105,8 @@ pinballux/data/media/packs/
 
 # User data directory (media files)
 data/
+
+# AppImage build artifacts and downloaded tools
+PinballUX-*.AppImage
+packaging/appimage/appimagetool-*.AppImage
+packaging/appimage/build/

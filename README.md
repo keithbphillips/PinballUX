@@ -61,6 +61,22 @@ Then run `pinballux-setup` to configure and get started!
 
 See [INSTALL.md](INSTALL.md) for detailed installation instructions.
 
+### AppImage (any Linux distribution)
+
+A single self-contained file for other x86_64 distributions (anything with glibc 2.35 or newer, e.g. Ubuntu 22.04+, Debian 12+, Fedora 36+, current Arch). Nothing to install, and no `libfuse2` needed.
+
+Download `PinballUX-<version>-x86_64.AppImage` from the [latest release](https://github.com/keithbphillips/PinballUX/releases/latest), then:
+
+```bash
+chmod +x PinballUX-*-x86_64.AppImage
+
+./PinballUX-*-x86_64.AppImage --setup           # configure first
+./PinballUX-*-x86_64.AppImage --table-manager   # scan tables, get media
+./PinballUX-*-x86_64.AppImage                   # start the frontend
+```
+
+In the Setup tool, set your **Table Directory** and **Media Directory** (the defaults under `/opt/pinballux` are for the .deb install). VPinball Standalone is not bundled: point Setup at an existing `VPinballX_GL`, or let it download VPinball into `~/.local/opt/vpinball`.
+
 ### Install from Source
 
 1. Install required system libraries:
@@ -154,6 +170,9 @@ pinballux-setup
 
 # Source install
 python setup_gui.py
+
+# AppImage
+./PinballUX-*-x86_64.AppImage --setup
 ```
 
 ### Configuration Tabs
@@ -210,6 +229,9 @@ pinballux-manager
 
 # Source install
 python table_manager.py
+
+# AppImage
+./PinballUX-*-x86_64.AppImage --table-manager
 ```
 
 On startup, the Table Manager will automatically:
@@ -370,6 +392,9 @@ pinballux
 
 # Source install
 python run_pinballux.py
+
+# AppImage
+./PinballUX-*-x86_64.AppImage
 ```
 
 ### Keyboard Controls

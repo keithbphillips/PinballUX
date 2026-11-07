@@ -3,13 +3,14 @@ VPX table launcher for Visual Pinball Standalone integration
 """
 
 import os
+import sys
 import subprocess
 import signal
 import time
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, Callable
-from PyQt6.QtCore import QObject, QProcess, QTimer, pyqtSignal
+from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSignal
 
 from .config import Config
 from .logger import get_logger
@@ -80,6 +81,7 @@ class VPXLauncher(QObject):
             self.current_process = QProcess()
             self.current_process.finished.connect(self._on_process_finished)
             self.current_process.errorOccurred.connect(self._on_process_error)
+            self.current_process.setProcessEnvironment(self._get_clean_process_env())
 
             # Set working directory to VP executable directory
             vp_dir = str(Path(vp_executable).parent)
@@ -189,6 +191,42 @@ class VPXLauncher(QObject):
         self.logger.error("Visual Pinball Standalone executable not found")
         return None
 
+    def _get_clean_process_env(self) -> QProcessEnvironment:
+        """Environment for tables / custom launchers, without the AppImage's bundle paths.
+
+        When frozen (PyInstaller, AppImage), variables such as LD_LIBRARY_PATH (and any
+        QT_*/GST_* plugin paths set at startup) point into the bundle. Children inherit
+        them: VPinballX_GL or a launcher's system python3 then load the bundled Qt
+        instead of the system one and fail (e.g. "undefined symbol" importing PyQt6).
+
+        Every variable whose value references the bundle is restored from its *_ORIG
+        copy (PyInstaller keeps one when the variable existed before) or removed, and
+        PyInstaller's internal _PYI_* markers are dropped. Unfrozen runs are unchanged.
+        """
+        env = QProcessEnvironment.systemEnvironment()
+        bundle_dirs = [d for d in (getattr(sys, '_MEIPASS', None), os.environ.get('APPDIR')) if d]
+        if not bundle_dirs and not getattr(sys, 'frozen', False):
+            return env
+
+        for name in list(env.keys()):
+            if name.startswith('_PYI_') or name.endswith('_ORIG'):
+                continue
+            value = env.value(name)
+            if not any(d in value for d in bundle_dirs):
+                continue
+            orig = env.value(f'{name}_ORIG') if env.contains(f'{name}_ORIG') else None
+            if orig:
+                env.insert(name, orig)
+            else:
+                env.remove(name)
+            self.logger.debug(f"Child environment: reset {name} (pointed into the app bundle)")
+
+        # PyInstaller bookkeeping; meaningless (or harmful) to other programs
+        for name in list(env.keys()):
+            if name.startswith('_PYI_') or name.endswith('_ORIG'):
+                env.remove(name)
+        return env
+
     def _build_command_args(self, table_path: str, options: Dict[str, Any]) -> list:
         """Build command line arguments for VPinballX_GL"""
         args = []
@@ -278,6 +316,7 @@ class VPXLauncher(QObject):
             self.current_process = QProcess()
             self.current_process.finished.connect(self._on_process_finished)
             self.current_process.errorOccurred.connect(self._on_process_error)
+            self.current_process.setProcessEnvironment(self._get_clean_process_env())
 
             # Set working directory to table directory
             self.current_process.setWorkingDirectory(table_dir)
