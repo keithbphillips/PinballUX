@@ -30,8 +30,10 @@ sys.path.insert(0, project_root)
 # Handle both development and installed import paths
 try:
     from pinballux.src.core.config import Config, MonitorConfig
+    from pinballux.src.core import platform_support
 except ModuleNotFoundError:
     from src.core.config import Config, MonitorConfig
+    from src.core import platform_support
 import pygame
 import shutil
 from datetime import datetime
@@ -1116,6 +1118,18 @@ class DisplayConfigTab(QWidget):
         self.screenres_manager.write_screen_config(screenres_configs, self.screens)
 
 
+VPINBALL_RELEASE = "https://github.com/vpinball/vpinball/releases/download/v10.8.0-2051-28dd6c3"
+
+
+def default_vpinball_url() -> str:
+    """VPinball Standalone download for this machine's architecture."""
+    import platform
+    if platform.machine().lower() in ("aarch64", "arm64"):
+        # Official Raspberry Pi build (OpenGL ES); needs glibc 2.39+, i.e. Raspberry Pi OS Trixie
+        return f"{VPINBALL_RELEASE}/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-aarch64-rpi.zip"
+    return f"{VPINBALL_RELEASE}/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-x64.zip"
+
+
 class VPinballDownloadThread(QThread):
     """Thread for downloading and extracting VPinball"""
     progress = pyqtSignal(str)
@@ -1259,9 +1273,7 @@ class VPXConfigTab(QWidget):
         # URL field
         url_layout = QHBoxLayout()
         url_layout.addWidget(QLabel("Download URL:"))
-        self.vpinball_url = QLineEdit(
-            "https://github.com/vpinball/vpinball/releases/download/v10.8.0-2051-28dd6c3/VPinballX_GL-10.8.0-2052-5a81d4e-Release-linux-x64.zip"
-        )
+        self.vpinball_url = QLineEdit(default_vpinball_url())
         url_layout.addWidget(self.vpinball_url)
         download_layout.addLayout(url_layout)
 
@@ -1326,9 +1338,11 @@ class VPXConfigTab(QWidget):
         is_frozen = (getattr(sys, 'frozen', False)
                      or hasattr(sys, '_MEIPASS')
                      or os.environ.get('APPIMAGE'))
-        if is_frozen:
+        if is_frozen or platform_support.is_raspberry_pi():
+            # Raspberry Pi installs (raspberry-pi/install.sh) keep VPinball in
+            # ~/.local/opt/vpinball, outside the git checkout
             exe_cfg = self.config.vpx.executable_path
-            if exe_cfg:
+            if exe_cfg and not exe_cfg.startswith("/opt/"):
                 return Path(exe_cfg).parent
             return Path.home() / ".local" / "opt" / "vpinball"
         return Path(project_root) / "vpinball"
@@ -1805,6 +1819,7 @@ class SetupWindow(QMainWindow):
 
 
 def main():
+    platform_support.apply_qt_environment()
     app = QApplication(sys.argv)
     window = SetupWindow()
     window.show()

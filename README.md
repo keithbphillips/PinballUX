@@ -77,6 +77,41 @@ chmod +x PinballUX-*-x86_64.AppImage
 
 In the Setup tool, set your **Table Directory** and **Media Directory** (the defaults under `/opt/pinballux` are for the .deb install). VPinball Standalone is not bundled: point Setup at an existing `VPinballX_GL`, or let it download VPinball into `~/.local/opt/vpinball`.
 
+### Raspberry Pi 5 (Raspberry Pi OS)
+
+Needs a **Raspberry Pi 5** running the current **64-bit Raspberry Pi OS with desktop** (Trixie or newer; the
+Lite image has no desktop, and the Bookworm-based images are too old for the Pi build of Visual Pinball).
+Older boards install, but Visual Pinball will be slow.
+
+1. Flash *Raspberry Pi OS (64-bit)* with Raspberry Pi Imager, boot it and finish the first-run setup
+   (user account, network, updates).
+2. Open a terminal and run:
+
+```bash
+git clone -b raspberry-pi https://github.com/keithbphillips/PinballUX.git ~/PinballUX
+~/PinballUX/raspberry-pi/install.sh
+```
+
+The installer asks for your password once (for `apt`) and then:
+
+- installs the system packages (PyQt6, pygame, SQLAlchemy, ffmpeg, ...)
+- downloads the official Raspberry Pi build of Visual Pinball Standalone into `~/.local/opt/vpinball`
+- creates the table, media and ROM folders under `~/PinballUX/pinballux/data/` and points PinballUX at them
+- adds **PinballUX**, **PinballUX Setup** and **PinballUX Table Manager** to the Games menu
+
+Options: `--autostart` starts PinballUX when the desktop logs in, `--samba` shares the Tables and ROMs folders on
+the network (`\\<hostname>\Tables`) so you can copy tables over from another computer. Run it with `--help` for
+the rest. Running it again is safe; to update, `cd ~/PinballUX && git pull && ./raspberry-pi/install.sh`.
+
+Then: run **PinballUX Setup** to assign your screens, put tables (`.vpx`, `.directb2s`) in
+`~/PinballUX/pinballux/data/tables` and ROMs in `~/PinballUX/pinballux/data/roms`, scan them in the
+**Table Manager**, and start **PinballUX**.
+
+On a Pi, PinballUX adjusts itself automatically: it runs under XWayland (so windows can be placed on the right
+monitor), decodes video in software, plays sound effects with `ffplay`, plays preview videos without sound, and
+pauses itself while a table is running so Visual Pinball gets the whole machine. Each of these can be overridden
+with an environment variable; see `pinballux/src/core/platform_support.py`.
+
 ### Install from Source
 
 1. Install required system libraries:

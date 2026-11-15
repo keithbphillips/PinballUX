@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt, QSettings, QtMsgType, qInstallMessageHandler
-from PyQt6.QtGui import QIcon
+from PyQt6.QtGui import QIcon, QCursor
 
 # Add the pinballux directory to the Python path to fix imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,11 +22,13 @@ try:
     from pinballux.src.core.config import Config
     from pinballux.src.core.logger import setup_logging
     from pinballux.src.core.single_instance import SingleInstanceLock
+    from pinballux.src.core import platform_support
 except ModuleNotFoundError:
     from src.core.application import PinballUXApp
     from src.core.config import Config
     from src.core.logger import setup_logging
     from src.core.single_instance import SingleInstanceLock
+    from src.core import platform_support
 
 
 def qt_message_handler(mode, context, message):
@@ -113,11 +115,18 @@ def main():
     # Install custom message handler to filter out harmless libpng warnings
     qInstallMessageHandler(qt_message_handler)
 
+    # Raspberry Pi: XWayland + software video decoding (no-op elsewhere)
+    platform_support.apply_qt_environment()
+
     # Create the Qt application
     app = QApplication(sys.argv)
     app.setApplicationName("PinballUX")
     app.setApplicationVersion("0.1.0")
     app.setOrganizationName("PinballUX")
+
+    if platform_support.is_raspberry_pi():
+        # Cabinet: no pointer, hide the cursor over all PinballUX windows
+        app.setOverrideCursor(QCursor(Qt.CursorShape.BlankCursor))
 
     # Set up logging
     setup_logging()

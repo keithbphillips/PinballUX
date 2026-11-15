@@ -186,8 +186,10 @@ class MediaManager:
 
     def _clean_filename(self, name: str) -> str:
         """Clean a name for use in filenames"""
-        # Remove or replace problematic characters
-        cleaned = re.sub(r'[^\w\s\-_\(\)]+', '', name)
+        # Remove or replace problematic characters. Keep '.' so version suffixes
+        # in table/media names (e.g. "v1.2", "v.2.4.1") survive — stripping the dot
+        # turned "v1.2" into "v12" and broke matching against the on-disk files.
+        cleaned = re.sub(r'[^\w\s\-_\(\).]+', '', name)
         # Normalize whitespace
         cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         return cleaned

@@ -26,8 +26,10 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
     log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     date_format = "%Y-%m-%d %H:%M:%S"
 
-    # Set up root logger
+    # Set up root logger. force=True replaces handlers added by any logging call made
+    # before this point, so the log file handler is always installed.
     logging.basicConfig(
+        force=True,
         level=getattr(logging, log_level.upper()),
         format=log_format,
         datefmt=date_format,

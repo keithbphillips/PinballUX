@@ -14,6 +14,7 @@ from PyQt6.QtCore import QObject, QProcess, QProcessEnvironment, QTimer, pyqtSig
 
 from .config import Config
 from .logger import get_logger
+from . import platform_support
 
 logger = get_logger(__name__)
 
@@ -87,8 +88,21 @@ class VPXLauncher(QObject):
             vp_dir = str(Path(vp_executable).parent)
             self.current_process.setWorkingDirectory(vp_dir)
 
+            # On a Raspberry Pi, run VPinball through a wrapper that suspends this
+            # frontend while the table plays (see core/vpx_pi_wrapper.sh). The wrapper
+            # must be our direct child: it uses its parent PID to suspend/resume us.
+            program, program_args = vp_executable, command_args
+            wrapper = platform_support.vpx_pi_wrapper()
+            if platform_support.is_raspberry_pi() and wrapper.exists():
+                env = self.current_process.processEnvironment()
+                env.insert("PINBALLUX_SUSPEND_FRONTEND",
+                           "1" if platform_support.suspend_frontend_during_play() else "0")
+                self.current_process.setProcessEnvironment(env)
+                program, program_args = "/bin/bash", [str(wrapper), vp_executable] + command_args
+                self.logger.debug(f"Using Raspberry Pi launch wrapper: {wrapper}")
+
             # Start the process
-            self.current_process.start(vp_executable, command_args)
+            self.current_process.start(program, program_args)
 
             if not self.current_process.waitForStarted(5000):  # 5 second timeout
                 error_msg = f"Failed to start Visual Pinball: {self.current_process.errorString()}"

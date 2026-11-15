@@ -12,8 +12,9 @@ from typing import List
 from pathlib import Path
 
 from ..core.logger import get_logger
+from ..core import platform_support
 from ..input.input_manager import InputManager, InputAction
-from .media_widgets import AudioPlayer
+from .media_widgets import create_audio_player
 from .wheel_canvas import WheelCanvas
 
 logger = get_logger(__name__)
@@ -268,9 +269,13 @@ class WheelWidget(QWidget):
 
         # Create media player for background video
         self.background_media_player = QMediaPlayer()
-        self.background_audio_output = QAudioOutput()
-        self.background_audio_output.setVolume(0.2)  # 20% volume for background
-        self.background_media_player.setAudioOutput(self.background_audio_output)
+        if platform_support.video_audio_enabled():
+            self.background_audio_output = QAudioOutput()
+            self.background_audio_output.setVolume(0.2)  # 20% volume for background
+            self.background_media_player.setAudioOutput(self.background_audio_output)
+        else:
+            # Raspberry Pi default: silent background video, no sound device stream
+            self.background_audio_output = None
 
         # Graphics view video item
         self.background_video_item = QGraphicsVideoItem()
@@ -479,6 +484,20 @@ class WheelWidget(QWidget):
         self.default_background.clear()
         self.default_background_proxy.setVisible(True)
         self.default_background.setText("No Media Available")
+
+    def release_background_audio(self):
+        """Stop the background player and release its audio device."""
+        if (getattr(self, 'background_media_player', None)
+                and self.background_media_player.audioOutput() is not None):
+            self.background_media_player.stop()
+            self.background_media_player.setAudioOutput(None)
+
+    def restore_background_audio(self):
+        """Re-attach the background player's audio output."""
+        if (getattr(self, 'background_media_player', None)
+                and getattr(self, 'background_audio_output', None)
+                and self.background_media_player.audioOutput() is None):
+            self.background_media_player.setAudioOutput(self.background_audio_output)
 
     def stop_background_video(self):
         """Stop background video playback (legacy method)"""
@@ -941,10 +960,10 @@ class WheelMainWindow(QWidget):
         self.logger = get_logger(__name__)
 
         # Initialize audio players
-        self.audio_player = AudioPlayer(self)  # For launch sounds
-        self.nav_audio_player = AudioPlayer(self)  # For navigation sounds
+        self.audio_player = create_audio_player(self)  # For launch sounds
+        self.nav_audio_player = create_audio_player(self)  # For navigation sounds
         self.nav_audio_player.set_volume(0.3)  # Lower volume for UI sounds
-        self.table_audio_player = AudioPlayer(self)  # For table-specific audio
+        self.table_audio_player = create_audio_player(self)  # For table-specific audio
         self.table_audio_player.set_volume(0.5)  # Medium volume for table audio
 
         # Load navigation sound if available
@@ -1236,11 +1255,19 @@ class WheelMainWindow(QWidget):
         if self.monitor_manager:
             self.monitor_manager.hide_loading("backglass")
 
+        if platform_support.release_audio_during_play():
+            # Raspberry Pi: stop all frontend media and release every audio stream
+            # while VPinball plays. Idle-but-open streams still contend with VPinball
+            # for the sound device and are heard as pops. _on_table_exited restores them.
+            self._release_frontend_for_play()
+
         # Let launch audio play for 3 seconds before stopping it
         # This allows the user to hear the launch sound before VPX audio takes over
         if self.audio_player.is_playing():
             QTimer.singleShot(3000, lambda: self._stop_launch_audio_if_playing())
             self.logger.debug("Will stop launch audio in 3 seconds")
+        elif platform_support.release_audio_during_play():
+            self.audio_player.detach_audio()
 
         if self.monitor_manager:
             # Blank DMD screen - just black, no text
@@ -1260,14 +1287,62 @@ class WheelMainWindow(QWidget):
 
     def _stop_launch_audio_if_playing(self):
         """Stop launch audio if still playing (called after delay)"""
-        if self.audio_player.is_playing():
+        if platform_support.release_audio_during_play():
+            self.audio_player.detach_audio()
+            self.logger.debug("Stopped and released launch audio after delay")
+        elif self.audio_player.is_playing():
             self.audio_player.stop()
             self.logger.debug("Stopped launch audio after delay")
+
+    def _display_video_widgets(self):
+        """Video widgets of the secondary displays (for releasing their audio)."""
+        widgets = []
+        if self.monitor_manager:
+            for name in ("backglass", "dmd", "fulldmd", "topper"):
+                display = self.monitor_manager.displays.get(name)
+                video_widget = getattr(display, "video_widget", None) if display else None
+                if video_widget:
+                    widgets.append(video_widget)
+        return widgets
+
+    def _release_frontend_for_play(self):
+        """Stop frontend media and release all audio streams while a table runs.
+        The launch sound (audio_player) is handled by the caller so it can finish."""
+        if self.wheel_widget:
+            self.wheel_widget.stop_background_media()
+            self.wheel_widget.release_background_audio()
+        for player in (self.nav_audio_player, self.table_audio_player):
+            if player:
+                player.detach_audio()
+        if self.monitor_manager:
+            # Blank the secondary displays too; this also stops their video decoding
+            for name in ("backglass", "topper", "fulldmd"):
+                display = self.monitor_manager.displays.get(name)
+                if display and hasattr(display, "clear_content"):
+                    display.clear_content()
+        for video_widget in self._display_video_widgets():
+            video_widget.detach_audio()
+
+    def _restore_frontend_after_play(self):
+        """Re-attach the audio streams released by _release_frontend_for_play()."""
+        for player in (self.audio_player, self.nav_audio_player, self.table_audio_player):
+            if player:
+                player.reattach_audio()
+        if self.wheel_widget:
+            self.wheel_widget.restore_background_audio()
+            # The wheel background was stopped for play; load it again
+            self.wheel_widget.update_table_info()
+        for video_widget in self._display_video_widgets():
+            video_widget.reattach_audio()
 
     def _on_table_exited(self, table_path: str, exit_code: int, duration: int):
         """Handle table exit - restore displays"""
         self.logger.info(f"Table exited, restoring displays")
         self.loading_popup.hide_loading()
+
+        if platform_support.release_audio_during_play():
+            # Re-attach audio before the media below is restored
+            self._restore_frontend_after_play()
 
 
         # Restart input polling for frontend navigation
